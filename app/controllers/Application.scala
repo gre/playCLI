@@ -64,7 +64,7 @@ import play.api.Play.current
 
 object Application extends Controller {
 
-  def index = find
+  def index = curl
 
   // consume a ogg sound, add an echo effect and store in a /tmp/out.ogg file
   def audioEchoEffectGenerate = Action {
@@ -88,7 +88,7 @@ object Application extends Controller {
   
   // Retrieve a webpage and display it (of course, this is just for the demo, I won't use curl, prefer using WS)
   def curl = Action {
-    Ok.stream(CLI("curl http://blog.greweb.fr/").enumerate >>> Enumerator.eof).withHeaders(
+    Ok.stream(CLI("curl -s http://blog.greweb.fr/").enumerate >>> Enumerator.eof).withHeaders(
       CONTENT_TYPE -> "text/html"
     )
   }
