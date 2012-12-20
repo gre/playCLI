@@ -11,31 +11,36 @@ case class CLI (cmd: String) {
 
   val logger = play.api.Logger("CLI")
 
+  def process = {
+    Process(cmd)
+  }
+
+  def logstderr (stderr: InputStream) = {
+    val br = new java.io.BufferedReader(new InputStreamReader(stderr))
+    var read = br.readLine()
+    while(read != null) {
+      logger.warn(read)
+      read = br.readLine()
+    }
+    stderr.close()
+  }
+
   /**
    * Get an [[play.api.libs.iteratee.Enumerator]] from a CLI output.
    * (nothing is sent to the CLI input)
    *
    * @example {{{
-   * CLI("find .").enumerate
+   CLI("find .").enumerate
    * }}}
    */
   def enumerate: Enumerator[Array[Byte]] = 
     Enumerator.flatten[Array[Byte]] {
       import scala.concurrent.ExecutionContext.Implicits.global
-      val process = Process(cmd)
       val promiseOfInputStream = concurrent.promise[InputStream]()
       process run new ProcessIO(
         _.close(),
         (stdout: InputStream) => promiseOfInputStream.success(stdout),
-        (stderr: InputStream) => {
-          val br = new java.io.BufferedReader(new InputStreamReader(stderr))
-          var read = br.readLine()
-          while(read != null) {
-            logger.warn(read)
-            read = br.readLine()
-          }
-          stderr.close()
-        }
+        logstderr(_)
       );
       promiseOfInputStream.future.map { cmdout =>
         Enumerator.fromStream(cmdout)
@@ -53,10 +58,29 @@ case class CLI (cmd: String) {
   //def pipe: Enumeratee[Array[Byte], Array[Byte]] = 
 
   /**
-   * Use for CLI consuming some data and generating a side effect
+   * Get an [[play.api.libs.iteratee.Iteratee]] consuming data 
+   * to push in the CLI (regardless of the CLI output).
+   *
+   * @example {{{
+     enumerator( CLI("aSideEffectCommand").consume )
+   * }}}
    */
-  def consume: Iteratee[Array[Byte], Array[Byte]] = {
-    Iteratee.consume[Array[Byte]]() // FIXME TODO
+  def consume: Iteratee[Array[Byte], Unit] = {
+    Iteratee.flatten[Array[Byte], Unit] {
+      import scala.concurrent.ExecutionContext.Implicits.global
+      val promiseOfOutputStream = concurrent.promise[OutputStream]()
+      process run new ProcessIO(
+        (stdin: OutputStream) => promiseOfOutputStream.success(stdin),
+        _.close(),
+        logstderr(_)
+      );
+      promiseOfOutputStream.future.map { cmdin =>
+        Iteratee.foreach[Array[Byte]] { bytes =>
+          cmdin.write(bytes)
+        }
+      }
+
+    }
   }
 }
 
@@ -64,7 +88,7 @@ import play.api.Play.current
 
 object Application extends Controller {
 
-  def index = curl
+  def index = audioEchoEffectGenerate
 
   // consume a ogg sound, add an echo effect and store in a /tmp/out.ogg file
   def audioEchoEffectGenerate = Action {
