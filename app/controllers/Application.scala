@@ -55,7 +55,32 @@ case class CLI (cmd: String) {
      oggStream &> CLI("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
    * }}}
    */
-  //def pipe: Enumeratee[Array[Byte], Array[Byte]] = 
+  def pipe: Enumeratee[Array[Byte], Array[Byte]] = {
+    Enumeratee.map[Array[Byte]] { bytes => bytes } // FIXME
+    /*
+    import scala.concurrent.ExecutionContext.Implicits.global
+    val promiseOfOutputStream = concurrent.promise[OutputStream]()
+    val promiseOfInputStream = concurrent.promise[InputStream]()
+    process run new ProcessIO(
+      (stdin: OutputStream) => promiseOfOutputStream.success(stdin),
+      (stdout: InputStream) => promiseOfInputStream.success(stdout),
+      logstderr(_)
+    );
+    
+    val promiseCmdin = promiseOfOutputStream.future.map { cmdin =>
+      Iteratee.foreach[Array[Byte]] { bytes =>
+        cmdin.write(bytes)
+      }
+    }
+    val promiseCmdout = promiseOfInputStream.future.map { cmdout =>
+      Enumerator.fromStream(cmdout)
+    }
+
+    import scala.concurrent.duration._
+    val cmdin = promiseCmdin.result(1 second) // FIXME
+    Enumeratee.grouped[Array[Byte]](cmdin)
+    */
+  }
 
   /**
    * Get an [[play.api.libs.iteratee.Iteratee]] consuming data 
@@ -85,23 +110,28 @@ case class CLI (cmd: String) {
 }
 
 import play.api.Play.current
+import play.api.libs.ws._
 
 object Application extends Controller {
 
-  def index = audioEchoEffectGenerate
+  def index = find
 
-  // consume a ogg sound, add an echo effect and store in a /tmp/out.ogg file
-  def audioEchoEffectGenerate = Action {
-    val consumer = CLI("sox -t ogg - /tmp/out.ogg echo 0.5 0.7 60 1").consume
-    Enumerator.fromFile(Play.getFile("conf/exemple.ogg"))(consumer)
-    Ok("'/tmp/out.ogg' file has been generated.")
+  /**
+   * Re-stream a web radio by adding echo with sox
+   */
+  def webRadioWithEcho = Action {
+    val radioSrc = "http://radio.hbr1.com:19800/ambient.ogg"
+    var radio = Concurrent.unicast[Array[Byte]]( channel => {
+      WS.url(radioSrc).get { header =>
+        Iteratee.foreach[Array[Byte]](channel.push(_))
+      }
+    }, () => ())
+    val addEcho = CLI("sox -t ogg - -t ogg - echo 0.5 0.7 60 1").pipe
+    Ok.stream(radio &> addEcho &> Concurrent.dropInputIfNotReady(50))
+      .withHeaders(
+        CONTENT_TYPE -> "audio/ogg"
+      )
   }
-
-  /*
-  def audioEchoEffect = Action {
-    CLI("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
-  }
-  */
 
   // List all files in this Play project
   def find = Action {
@@ -116,5 +146,13 @@ object Application extends Controller {
       CONTENT_TYPE -> "text/html"
     )
   }
+
+  // consume a ogg sound, add an echo effect and store in a /tmp/out.ogg file
+  def audioEchoEffectGenerate = Action {
+    val consumer = CLI("sox -t ogg - /tmp/out.ogg echo 0.5 0.7 60 1").consume
+    Enumerator.fromFile(Play.getFile("conf/exemple.ogg"))(consumer)
+    Ok("'/tmp/out.ogg' file has been generated.")
+  }
+
   
 }
