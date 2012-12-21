@@ -11,13 +11,7 @@ object CLI {
 
   val logger = play.api.Logger("CLI")
 
-  /*
-  def process = {
-    Process(cmd)
-  }
-  */
-
-  def logstderr (stderr: InputStream) = {
+  def logstderr (stderr: InputStream) = { // FIXME, rewrite this with iteratee?
     val br = new java.io.BufferedReader(new InputStreamReader(stderr))
     var read = br.readLine()
     while(read != null) {
@@ -58,7 +52,7 @@ object CLI {
    * }}}
    */
   def pipe (process: ProcessBuilder): Enumeratee[Array[Byte], Array[Byte]] = {
-    Enumeratee.map[Array[Byte]] { bytes => bytes } // FIXME
+    Enumeratee.map[Array[Byte]] { bytes => bytes } // FIXME how to implement this?
     /*
     import scala.concurrent.ExecutionContext.Implicits.global
     val promiseOfOutputStream = concurrent.promise[OutputStream]()
