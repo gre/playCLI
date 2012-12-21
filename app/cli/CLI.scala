@@ -7,7 +7,7 @@ import play.api.libs.iteratee._
 /**
  * CLI provides a link between play iteratee and an UNIX command.
  *
- * Depending on your needs, you can Pipe / Enumerate / Consume with a UNIX command:
+ * Depending on your needs, you can Pipe / Enumerate / Consume with an UNIX command:
  *
  * `CLI.pipe` create an [[play.api.libs.iteratee.Enumeratee]]
  * `CLI.enumerate` create an [[play.api.libs.iteratee.Enumerator]]
@@ -35,7 +35,7 @@ object CLI {
    CLI.enumerate("find .")
    * }}}
    */
-  def enumerate (process: ProcessBuilder): Enumerator[Array[Byte]] = 
+  def enumerate (process: ProcessBuilder, chunkSize: Int = 1024 * 8): Enumerator[Array[Byte]] = 
     Enumerator.flatten[Array[Byte]] {
       import scala.concurrent.ExecutionContext.Implicits.global
       val promiseOfInputStream = concurrent.promise[InputStream]()
@@ -45,7 +45,7 @@ object CLI {
         logstderr(_)
       );
       promiseOfInputStream.future.map { cmdout =>
-        Enumerator.fromStream(cmdout)
+        Enumerator.fromStream(cmdout, chunkSize)
       }
     }
 
@@ -57,9 +57,7 @@ object CLI {
      oggStream &> CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
    * }}}
    */
-  def pipe (process: ProcessBuilder): Enumeratee[Array[Byte], Array[Byte]] = {
-    Enumeratee.map[Array[Byte]] { bytes => bytes } // FIXME how to implement this?
-    /*
+  def pipe (process: ProcessBuilder, chunkSize: Int = 1024 * 8): Enumeratee[Array[Byte], Array[Byte]] = {
     import scala.concurrent.ExecutionContext.Implicits.global
     val promiseOfOutputStream = concurrent.promise[OutputStream]()
     val promiseOfInputStream = concurrent.promise[InputStream]()
@@ -75,13 +73,46 @@ object CLI {
       }
     }
     val promiseCmdout = promiseOfInputStream.future.map { cmdout =>
-      Enumerator.fromStream(cmdout)
+      Enumerator.fromStream(cmdout, chunkSize)
     }
 
-    import scala.concurrent.duration._
-    val cmdin = promiseCmdin.result(1 second) // FIXME
-    Enumeratee.grouped[Array[Byte]](cmdin)
-    */
+    import Enumeratee.CheckDone
+
+    var promiseOfEnumeratee = (promiseCmdin zip promiseCmdout).map { case (cmdin, cmdout) =>
+
+      // FIXME, I'm trying something, this is not working yet...
+      /**
+       * What I basically want is to create an Enumeratee where:
+       * - all input from this Enumeratee are plugged to the cmdin (cmdin: Iteratee)
+       * - all input coming from cmdout (cmdout: Enumerator) are plugged to the output of this Enumeratee
+       */
+      new CheckDone[Array[Byte], Array[Byte]] {
+
+        def step[A](k: K[Array[Byte], A]): K[Array[Byte], Iteratee[Array[Byte], A]] = {
+          case in @ Input.El(bytes) => {
+            cmdin.feed(in)
+            val r = Iteratee.flatten(cmdout |>> k(in))
+            new CheckDone[Array[Byte], Array[Byte]] { 
+              def continue[A](k: K[Array[Byte], A]) = Cont(step(k)) 
+            } &> r
+          }
+
+          case in @ Input.Empty => {
+            val r = Iteratee.flatten(cmdout |>> k(in))
+            new CheckDone[Array[Byte], Array[Byte]] { 
+              def continue[A](k: K[Array[Byte], A]) = Cont(step(k)) 
+            } &> r
+          }
+
+          case Input.EOF => {
+            Done(Cont(k), Input.EOF)
+          }
+        }
+        def continue[A](k: K[Array[Byte], A]) = Cont(step(k))
+      }
+
+    }
+    concurrent.Await.result(promiseOfEnumeratee, concurrent.duration.Duration("1 second")) // FIXME need a Enumeratee.flatten
   }
 
   /**
@@ -98,13 +129,16 @@ object CLI {
       import scala.concurrent.ExecutionContext.Implicits.global
       val promiseOfOutputStream = concurrent.promise[OutputStream]()
       process run new ProcessIO(
-        (stdin: OutputStream) => promiseOfOutputStream.success(stdin),
+        (stdin: OutputStream) => promiseOfOutputStream.success(stdin), // FIXME: how to close this stdin when done?
         _.close(),
         logstderr(_)
       );
       promiseOfOutputStream.future.map { cmdin =>
         Iteratee.foreach[Array[Byte]] { bytes =>
+          println("write", bytes.map(_.toChar).mkString)
           cmdin.write(bytes)
+        } mapDone { _ =>
+          cmdin.close()
         }
       }
 
