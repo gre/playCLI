@@ -26,16 +26,14 @@ object CLI {
    CLI.enumerate("find .")
    * }}}
    */
-  def enumerate (cmd: ProcessBuilder, chunkSize: Int = 1024 * 8): Enumerator[Array[Byte]] = Enumerator.flatten[Array[Byte]] {
-    import scala.concurrent.ExecutionContext.Implicits.global
+  def enumerate (cmd: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext): Enumerator[Array[Byte]] = Enumerator.flatten[Array[Byte]] {
     val (process, stdin, stdout) = runProcess(cmd)
-
-    stdin map { _.close() }
 
     stdout map { stdout =>
       Enumerator.fromStream(stdout, chunkSize).
       onDoneEnumerating { () =>
-        process.destroy()
+        // stdin map { _.close() }
+        // process.destroy()
       }
     }
   }
@@ -48,8 +46,7 @@ object CLI {
      oggStream &> CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
    * }}}
    */
-  def pipe (cmd: ProcessBuilder, chunkSize: Int = 1024 * 8): Enumeratee[Array[Byte], Array[Byte]] = {
-    import scala.concurrent.ExecutionContext.Implicits.global
+  def pipe (cmd: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext): Enumeratee[Array[Byte], Array[Byte]] = {
     val (process, stdin, stdout) = runProcess(cmd)
     
     val promiseCmdin = stdin.map { cmdin =>
@@ -90,7 +87,7 @@ object CLI {
         def continue[A](k: K[Array[Byte], A]) = Cont(step(k))
       } ><> 
         Enumeratee.onIterateeDone { () =>
-          process.destroy()
+          //process.destroy() // FIXME
         }
     }
     concurrent.Await.result(promiseOfEnumeratee, concurrent.duration.Duration("1 second")) // FIXME need a Enumeratee.flatten
@@ -105,17 +102,16 @@ object CLI {
      anEnumerator(consumer)
    * }}}
    */
-  def consume (cmd: ProcessBuilder): Iteratee[Array[Byte], Unit] = Iteratee.flatten[Array[Byte], Unit] {
-    import scala.concurrent.ExecutionContext.Implicits.global
+  def consume (cmd: ProcessBuilder)(implicit ex: ExecutionContext): Iteratee[Array[Byte], Unit] = Iteratee.flatten[Array[Byte], Unit] {
     val (process, stdin, stdout) = runProcess(cmd)
 
-    stdout map { _.close() }
     stdin map { cmdin =>
       Iteratee.foreach[Array[Byte]] { bytes =>
         cmdin.write(bytes)
       } mapDone { _ =>
         cmdin.close()
-        process.destroy()
+        // stdout map { _.close() }
+        // process.destroy() // FIXME maybe the cmd is maybe processing slowly (but what to do?)
       }
     }
   }
