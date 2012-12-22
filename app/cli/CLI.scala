@@ -1,8 +1,10 @@
 package cli
 
 import java.io._
-import scala.sys.process.{ ProcessIO, ProcessBuilder }
+import scala.sys.process.{ Process, ProcessIO, ProcessBuilder }
 import play.api.libs.iteratee._
+
+import concurrent.{ promise, Future, ExecutionContext }
 
 /**
  * CLI provides a link between play iteratee and an UNIX command.
@@ -15,19 +17,6 @@ import play.api.libs.iteratee._
  */
 object CLI {
 
-  val logger = play.api.Logger("CLI")
-
-
-
-  def logstderr (stderr: InputStream) {
-    val br = new java.io.BufferedReader(new InputStreamReader(stderr))
-    var read = br.readLine()
-    while(read != null) {
-      logger.warn(read)
-      read = br.readLine()
-    }
-    stderr.close()
-  }
 
   /**
    * Get an [[play.api.libs.iteratee.Enumerator]] from a CLI output.
@@ -37,22 +26,19 @@ object CLI {
    CLI.enumerate("find .")
    * }}}
    */
-  def enumerate (cmd: ProcessBuilder, chunkSize: Int = 1024 * 8): Enumerator[Array[Byte]] = 
-    Enumerator.flatten[Array[Byte]] {
-      import scala.concurrent.ExecutionContext.Implicits.global
-      val promiseOfInputStream = concurrent.promise[InputStream]()
-      val process = cmd run new ProcessIO(
-        _.close(),
-        (stdout: InputStream) => promiseOfInputStream.success(stdout),
-        logstderr(_)
-      );
-      promiseOfInputStream.future.map { cmdout =>
-        Enumerator.fromStream(cmdout, chunkSize).
-          onDoneEnumerating { () =>
-            process.destroy()
-          }
+  def enumerate (cmd: ProcessBuilder, chunkSize: Int = 1024 * 8): Enumerator[Array[Byte]] = Enumerator.flatten[Array[Byte]] {
+    import scala.concurrent.ExecutionContext.Implicits.global
+    val (process, stdin, stdout) = runProcess(cmd)
+
+    stdin map { _.close() }
+
+    stdout map { stdout =>
+      Enumerator.fromStream(stdout, chunkSize).
+      onDoneEnumerating { () =>
+        process.destroy()
       }
     }
+  }
 
   /**
    * Get an [[play.api.libs.iteratee.Enumeratee]] from the CLI piping.
@@ -64,20 +50,14 @@ object CLI {
    */
   def pipe (cmd: ProcessBuilder, chunkSize: Int = 1024 * 8): Enumeratee[Array[Byte], Array[Byte]] = {
     import scala.concurrent.ExecutionContext.Implicits.global
-    val promiseOfOutputStream = concurrent.promise[OutputStream]()
-    val promiseOfInputStream = concurrent.promise[InputStream]()
-    val process = cmd run new ProcessIO(
-      (stdin: OutputStream) => promiseOfOutputStream.success(stdin),
-      (stdout: InputStream) => promiseOfInputStream.success(stdout),
-      logstderr(_)
-    );
+    val (process, stdin, stdout) = runProcess(cmd)
     
-    val promiseCmdin = promiseOfOutputStream.future.map { cmdin =>
+    val promiseCmdin = stdin.map { cmdin =>
       Iteratee.foreach[Array[Byte]] { bytes =>
         cmdin.write(bytes)
       }
     }
-    val promiseCmdout = promiseOfInputStream.future.map { cmdout =>
+    val promiseCmdout = stdout.map { cmdout =>
       Enumerator.fromStream(cmdout, chunkSize)
     }
 
@@ -87,14 +67,18 @@ object CLI {
 
       // FIXME, I'm trying something, this is not working yet...
       /**
-       * What I basically want is to create an Enumeratee where:
+       * Create an Enumeratee where:
        * - all input from this Enumeratee are plugged to the cmdin (cmdin: Iteratee)
        * - all input coming from cmdout (cmdout: Enumerator) are plugged to the output of this Enumeratee
        */
       new CheckDone[Array[Byte], Array[Byte]] {
 
         def step[A](k: K[Array[Byte], A]): K[Array[Byte], Iteratee[Array[Byte], A]] = {
-          case in @ Input.El(bytes) => {
+          case in @ Input.EOF => {
+            cmdin.feed(in)
+            Done(Cont(k), Input.EOF)
+          }
+          case in => {
             cmdin.feed(in)
             val r = Iteratee.flatten(cmdout |>> k(in))
             new CheckDone[Array[Byte], Array[Byte]] { 
@@ -102,23 +86,12 @@ object CLI {
             } &> r
           }
 
-          case in @ Input.Empty => {
-            val r = Iteratee.flatten(cmdout |>> k(in))
-            new CheckDone[Array[Byte], Array[Byte]] { 
-              def continue[A](k: K[Array[Byte], A]) = Cont(step(k)) 
-            } &> r
-          }
-
-          case Input.EOF => {
-            Done(Cont(k), Input.EOF)
-          }
         }
         def continue[A](k: K[Array[Byte], A]) = Cont(step(k))
       } ><> 
-      Enumeratee.onIterateeDone { () =>
-        process.destroy()
-      }
-
+        Enumeratee.onIterateeDone { () =>
+          process.destroy()
+        }
     }
     concurrent.Await.result(promiseOfEnumeratee, concurrent.duration.Duration("1 second")) // FIXME need a Enumeratee.flatten
   }
@@ -132,24 +105,46 @@ object CLI {
      anEnumerator(consumer)
    * }}}
    */
-  def consume (cmd: ProcessBuilder): Iteratee[Array[Byte], Unit] = {
-    Iteratee.flatten[Array[Byte], Unit] {
-      import scala.concurrent.ExecutionContext.Implicits.global
-      val promiseOfOutputStream = concurrent.promise[OutputStream]()
-      val process = cmd run new ProcessIO(
-        (stdin: OutputStream) => promiseOfOutputStream.success(stdin), // FIXME: how to close this stdin when done?
-        _.close(),
-        logstderr(_)
-      );
-      promiseOfOutputStream.future.map { cmdin =>
-        Iteratee.foreach[Array[Byte]] { bytes =>
-          cmdin.write(bytes)
-        } mapDone { _ =>
-          cmdin.close()
-          process.destroy()
-        }
-      }
+  def consume (cmd: ProcessBuilder): Iteratee[Array[Byte], Unit] = Iteratee.flatten[Array[Byte], Unit] {
+    import scala.concurrent.ExecutionContext.Implicits.global
+    val (process, stdin, stdout) = runProcess(cmd)
 
+    stdout map { _.close() }
+    stdin map { cmdin =>
+      Iteratee.foreach[Array[Byte]] { bytes =>
+        cmdin.write(bytes)
+      } mapDone { _ =>
+        cmdin.close()
+        process.destroy()
+      }
     }
+  }
+
+
+  private val logger = play.api.Logger("CLI")
+
+  private def logstderr (stderr: InputStream) {
+    val br = new java.io.BufferedReader(new InputStreamReader(stderr))
+    var read = br.readLine()
+    while(read != null) {
+      logger.warn(read)
+      read = br.readLine()
+    }
+    stderr.close()
+  }
+
+  /**
+   * Run a process from a command and return a (process, future of stdin, future of stdout)
+   */
+  private def runProcess (command: ProcessBuilder)(implicit ex: ExecutionContext): (Process, Future[OutputStream], Future[InputStream]) = {
+    val promiseStdin = promise[OutputStream]()
+    val promiseStdout = promise[InputStream]()
+
+    val process = command run new ProcessIO(
+      (stdin: OutputStream) => promiseStdin.success(stdin),
+      (stdout: InputStream) => promiseStdout.success(stdout),
+      logstderr(_)
+    )
+    (process, promiseStdin.future, promiseStdout.future)
   }
 }

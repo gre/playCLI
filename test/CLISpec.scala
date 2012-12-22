@@ -24,20 +24,25 @@ class CLITest extends Specification {
 
   val bytesJoin = Iteratee.fold[Array[Byte], Array[Byte]](Array[Byte]())((a, b) => a++b)
 
-  /*
   "CLI.pipe" should {
     
+    "echo should work" in {
+      val enum = Enumerator[Array[Byte]]()
+      val text = "HelloWorld"
+      val pipe = CLI.pipe("echo -n "+text)
+      val result: Array[Byte] = Await.result(enum &> pipe |>>> bytesJoin, Duration("1 second"))
+      result must equalTo (text)
+    }
+
     "pipe the equivalent with cat" in {
       val items = List("toto\n", "tata\n", "titi\n").map { str => stringToBytes(str) }
       val enum = Enumerator.apply(items : _*)
-      val it = Iteratee.fold[Array[Byte], Array[Byte]](Array[Byte]())((a, b) => a++b)
-      val result: Array[Byte] = Await.result(enum &> CLI.pipe("cat") |>>> it, Duration("1 second"))
+      val result: Array[Byte] = Await.result(enum &> CLI.pipe("cat") |>>> bytesJoin, Duration("1 second"))
       result must equalTo (items)
     }
-
+    
     // TODO a test which pipe multiple times
   }
-  */
 
   "CLI.enumerate" should {
 
