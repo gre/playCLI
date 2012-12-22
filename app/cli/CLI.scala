@@ -17,7 +17,9 @@ object CLI {
 
   val logger = play.api.Logger("CLI")
 
-  def logstderr (stderr: InputStream) = { // FIXME, rewrite this with iteratee?
+
+
+  def logstderr (stderr: InputStream) {
     val br = new java.io.BufferedReader(new InputStreamReader(stderr))
     var read = br.readLine()
     while(read != null) {
@@ -35,17 +37,20 @@ object CLI {
    CLI.enumerate("find .")
    * }}}
    */
-  def enumerate (process: ProcessBuilder, chunkSize: Int = 1024 * 8): Enumerator[Array[Byte]] = 
+  def enumerate (cmd: ProcessBuilder, chunkSize: Int = 1024 * 8): Enumerator[Array[Byte]] = 
     Enumerator.flatten[Array[Byte]] {
       import scala.concurrent.ExecutionContext.Implicits.global
       val promiseOfInputStream = concurrent.promise[InputStream]()
-      process run new ProcessIO(
+      val process = cmd run new ProcessIO(
         _.close(),
         (stdout: InputStream) => promiseOfInputStream.success(stdout),
         logstderr(_)
       );
       promiseOfInputStream.future.map { cmdout =>
-        Enumerator.fromStream(cmdout, chunkSize)
+        Enumerator.fromStream(cmdout, chunkSize).
+          onDoneEnumerating { () =>
+            process.destroy()
+          }
       }
     }
 
@@ -57,11 +62,11 @@ object CLI {
      oggStream &> CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
    * }}}
    */
-  def pipe (process: ProcessBuilder, chunkSize: Int = 1024 * 8): Enumeratee[Array[Byte], Array[Byte]] = {
+  def pipe (cmd: ProcessBuilder, chunkSize: Int = 1024 * 8): Enumeratee[Array[Byte], Array[Byte]] = {
     import scala.concurrent.ExecutionContext.Implicits.global
     val promiseOfOutputStream = concurrent.promise[OutputStream]()
     val promiseOfInputStream = concurrent.promise[InputStream]()
-    process run new ProcessIO(
+    val process = cmd run new ProcessIO(
       (stdin: OutputStream) => promiseOfOutputStream.success(stdin),
       (stdout: InputStream) => promiseOfInputStream.success(stdout),
       logstderr(_)
@@ -109,6 +114,9 @@ object CLI {
           }
         }
         def continue[A](k: K[Array[Byte], A]) = Cont(step(k))
+      } ><> 
+      Enumeratee.onIterateeDone { () =>
+        process.destroy()
       }
 
     }
@@ -124,21 +132,21 @@ object CLI {
      anEnumerator(consumer)
    * }}}
    */
-  def consume (process: ProcessBuilder): Iteratee[Array[Byte], Unit] = {
+  def consume (cmd: ProcessBuilder): Iteratee[Array[Byte], Unit] = {
     Iteratee.flatten[Array[Byte], Unit] {
       import scala.concurrent.ExecutionContext.Implicits.global
       val promiseOfOutputStream = concurrent.promise[OutputStream]()
-      process run new ProcessIO(
+      val process = cmd run new ProcessIO(
         (stdin: OutputStream) => promiseOfOutputStream.success(stdin), // FIXME: how to close this stdin when done?
         _.close(),
         logstderr(_)
       );
       promiseOfOutputStream.future.map { cmdin =>
         Iteratee.foreach[Array[Byte]] { bytes =>
-          println("write", bytes.map(_.toChar).mkString)
           cmdin.write(bytes)
         } mapDone { _ =>
           cmdin.close()
+          process.destroy()
         }
       }
 
