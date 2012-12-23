@@ -32,8 +32,10 @@ object CLI {
     stdout map { stdout =>
       Enumerator.fromStream(stdout, chunkSize).
       onDoneEnumerating { () =>
-        // stdin map { _.close() }
-        // process.destroy()
+        val code = process.exitValue() // FIXME, this is blocking
+        logger.debug("exit("+code+") for command"+cmd)
+        stdin map { _.close() }
+        process.destroy()
       }
     }
   }
@@ -87,7 +89,9 @@ object CLI {
         def continue[A](k: K[Array[Byte], A]) = Cont(step(k))
       } ><> 
         Enumeratee.onIterateeDone { () =>
-          //process.destroy() // FIXME
+          val code = process.exitValue() // FIXME, this is blocking
+          logger.debug("exit("+code+") for command"+cmd)
+          process.destroy()
         }
     }
     concurrent.Await.result(promiseOfEnumeratee, concurrent.duration.Duration("1 second")) // FIXME need a Enumeratee.flatten
@@ -110,8 +114,10 @@ object CLI {
         cmdin.write(bytes)
       } mapDone { _ =>
         cmdin.close()
-        // stdout map { _.close() }
-        // process.destroy() // FIXME maybe the cmd is maybe processing slowly (but what to do?)
+        val code = process.exitValue() // FIXME, this is blocking
+        logger.debug("exit("+code+") for command"+cmd)
+        stdout map { _.close() }
+        process.destroy() // FIXME maybe the cmd is maybe processing slowly (but what to do?)
       }
     }
   }

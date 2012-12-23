@@ -78,17 +78,18 @@ class CLITest extends Specification {
   
   "CLI.consume" should {
 
-    // FIXME: This test doesn't work
     "write some bytes in temporary file" in {
-      val items = List("foo", "bar", "fooooo").map { str => stringToBytes(str) }
+      val items = Range(0, 100).map { i =>
+        stringToBytes(Range(0, 200).map { _ => "A" } mkString)
+      }
       val enum = Enumerator(items : _*)
-      val file = File.createTempFile("tmp.txt", null)
+      val file = File.createTempFile("tmp", ".txt")
       val writer = CLI.consume(Process("cat") #> file)
-      Await.result(enum(writer), Duration.Inf)
+      Await.result(enum |>>> writer, Duration.Inf)
       val fileContent = Await.result(Enumerator.fromFile(file) |>>> bytesJoin, Duration.Inf)
-      fileContent must equalTo (items.fold(Array[Byte]())((a, b) => a++b))
+      val exceptContent = items.fold(Array[Byte]())((a, b) => a++b)
+      fileContent must equalTo (exceptContent) updateMessage("fileContent equals enumerator values.")
     }
-
   }
 
 }
