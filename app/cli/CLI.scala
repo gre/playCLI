@@ -72,8 +72,8 @@ object CLI {
 
   /**
    * Create an Enumeratee where:
-   * - all input from this Enumeratee are plugged to the cmdin (cmdin: Iteratee)
-   * - all input coming from cmdout (cmdout: Enumerator) are plugged to the output of this Enumeratee
+   * - all input sent to this Enumeratee are plugged to the cmdin (cmdin: Iteratee)
+   * - all input coming from cmdout (cmdout: Enumerator) are streamed to the output of this Enumeratee
    */
   def enumerateePipe ( 
     cmdin: Iteratee[Array[Byte], Unit], 
