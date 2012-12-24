@@ -32,7 +32,7 @@ object CLI {
     stdout map { stdout =>
       Enumerator.fromStream(stdout, chunkSize).
       onDoneEnumerating { () =>
-        val code = process.exitValue() // FIXME, this is blocking
+        val code = process.exitValue()
         logger.debug("exit("+code+") for command"+cmd)
         stdin map { _.close() }
         process.destroy()
@@ -62,7 +62,7 @@ object CLI {
 
     var promiseOfEnumeratee = (promiseCmdin zip promiseCmdout).map { case (cmdin, cmdout) =>
       enumerateePipe(cmdin, cmdout) ><> Enumeratee.onIterateeDone { () =>
-        val code = process.exitValue() // FIXME, this is blocking
+        val code = process.exitValue()
         logger.debug("exit("+code+") for command"+cmd)
         process.destroy()
       }
@@ -75,12 +75,14 @@ object CLI {
    * - all input sent to this Enumeratee are plugged to the cmdin (cmdin: Iteratee)
    * - all input coming from cmdout (cmdout: Enumerator) are streamed to the output of this Enumeratee
    */
-  def enumerateePipe ( 
+  def enumerateePipe (
     cmdin: Iteratee[Array[Byte], Unit], 
     cmdout: Enumerator[Array[Byte]]
   ) : Enumeratee[Array[Byte], Array[Byte]] = {
-    import Enumeratee.CheckDone
 
+    Enumeratee.map[Array[Byte]] { b => b } // enumerateePipe: FIXME Not Implemented Yet!
+    /*
+      import Enumeratee.CheckDone
       new CheckDone[Array[Byte], Array[Byte]] { // FIXME, I'm trying something, this is not working yet...
 
         def step[A](k: K[Array[Byte], A]): K[Array[Byte], Iteratee[Array[Byte], A]] = {
@@ -100,6 +102,7 @@ object CLI {
         }
         def continue[A](k: K[Array[Byte], A]) = Cont(step(k))
       }
+    */
   }
 
 
@@ -120,10 +123,10 @@ object CLI {
         cmdin.write(bytes)
       } mapDone { _ =>
         cmdin.close()
-        val code = process.exitValue() // FIXME, this is blocking
+        val code = process.exitValue()
         logger.debug("exit("+code+") for command"+cmd)
         stdout map { _.close() }
-        process.destroy() // FIXME maybe the cmd is maybe processing slowly (but what to do?)
+        process.destroy()
       }
     }
   }
