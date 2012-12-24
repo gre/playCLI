@@ -21,17 +21,22 @@ object Application extends Controller {
 
   // Re-stream a web radio by adding echo with sox
   def webRadioWithEcho = Action {
-    val radioSrc = "http://radio.hbr1.com:19800/ambient.ogg"
-    var radio = Concurrent.unicast[Array[Byte]]( channel => {
-      WS.url(radioSrc).get { header =>
-        Iteratee.foreach[Array[Byte]](channel.push(_))
-      }
+    val src = "http://radio.hbr1.com:19800/ambient.ogg"
+    var stream = Concurrent.unicast[Array[Byte]]( channel => {
+      WS.url(src).get { header => Iteratee.foreach[Array[Byte]](channel.push(_)) }
     }, () => ())
     val addEcho = CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
-    Ok.stream(radio &> addEcho &> Concurrent.dropInputIfNotReady(50))
-      .withHeaders(
-        CONTENT_TYPE -> "audio/ogg"
-      )
+    Ok.stream(stream &> addEcho).withHeaders(CONTENT_TYPE -> "audio/ogg")
+  }
+
+  // Retrieve an online video, resize it, stream it
+  def reEncodeAndStreamVideo = Action {
+    var src = "http://ftp.nluug.nl/pub/graphics/blender/demo/movies/glsl_bird.avi"
+    var stream = Concurrent.unicast[Array[Byte]]( channel => {
+      WS.url(src).get { header => Iteratee.foreach[Array[Byte]](channel.push(_)) }
+    }, () => ())
+    val scaleHalf = CLI.pipe("ffmpeg -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")
+    Ok.stream(stream &> scaleHalf).withHeaders(CONTENT_TYPE -> "video/avi")
   }
 
   // List all files in this Play project
