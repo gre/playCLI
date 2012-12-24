@@ -1,7 +1,19 @@
-@(message: String)
+@()
 
-@main("Welcome to Play 2.0") {
-    
-    @play20.welcome(message)
-    
+@main("Play CLI") {
+<ul>
+  <li>
+    Web Radio:
+    <audio src="/webradio.ogg" controls></audio>
+  </li>
+  <li>
+    <a href="/find">find</a>
+  </li>
+  <li>
+    <a href="/curl">curl</a>
+  </li>
+  <li>
+    <a href="audioEchoEffectGenerate">audioEchoEffectGenerate</a>
+  </li>
+</ul>
 }

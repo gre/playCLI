@@ -17,7 +17,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 object Application extends Controller {
 
-  def index = audioEchoEffectGenerate
+  def index = Action(Ok(views.html.index()))
 
   // Re-stream a web radio by adding echo with sox
   def webRadioWithEcho = Action {

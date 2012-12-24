@@ -60,19 +60,31 @@ object CLI {
       Enumerator.fromStream(cmdout, chunkSize)
     }
 
+    var promiseOfEnumeratee = (promiseCmdin zip promiseCmdout).map { case (cmdin, cmdout) =>
+      enumerateePipe(cmdin, cmdout) ><> Enumeratee.onIterateeDone { () =>
+        val code = process.exitValue() // FIXME, this is blocking
+        logger.debug("exit("+code+") for command"+cmd)
+        process.destroy()
+      }
+    }
+    concurrent.Await.result(promiseOfEnumeratee, concurrent.duration.Duration("1 second")) // FIXME need a Enumeratee.flatten
+  }
+
+  /**
+   * Create an Enumeratee where:
+   * - all input from this Enumeratee are plugged to the cmdin (cmdin: Iteratee)
+   * - all input coming from cmdout (cmdout: Enumerator) are plugged to the output of this Enumeratee
+   */
+  def enumerateePipe ( 
+    cmdin: Iteratee[Array[Byte], Unit], 
+    cmdout: Enumerator[Array[Byte]]
+  ) : Enumeratee[Array[Byte], Array[Byte]] = {
     import Enumeratee.CheckDone
 
-    var promiseOfEnumeratee = (promiseCmdin zip promiseCmdout).map { case (cmdin, cmdout) =>
-
-      // FIXME, I'm trying something, this is not working yet...
-      /**
-       * Create an Enumeratee where:
-       * - all input from this Enumeratee are plugged to the cmdin (cmdin: Iteratee)
-       * - all input coming from cmdout (cmdout: Enumerator) are plugged to the output of this Enumeratee
-       */
-      new CheckDone[Array[Byte], Array[Byte]] {
+      new CheckDone[Array[Byte], Array[Byte]] { // FIXME, I'm trying something, this is not working yet...
 
         def step[A](k: K[Array[Byte], A]): K[Array[Byte], Iteratee[Array[Byte], A]] = {
+          
           case in @ Input.EOF => {
             cmdin.feed(in)
             Done(Cont(k), Input.EOF)
@@ -87,15 +99,9 @@ object CLI {
 
         }
         def continue[A](k: K[Array[Byte], A]) = Cont(step(k))
-      } ><> 
-        Enumeratee.onIterateeDone { () =>
-          val code = process.exitValue() // FIXME, this is blocking
-          logger.debug("exit("+code+") for command"+cmd)
-          process.destroy()
-        }
-    }
-    concurrent.Await.result(promiseOfEnumeratee, concurrent.duration.Duration("1 second")) // FIXME need a Enumeratee.flatten
+      }
   }
+
 
   /**
    * Get an [[play.api.libs.iteratee.Iteratee]] consuming data 

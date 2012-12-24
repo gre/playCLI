@@ -5,5 +5,11 @@
 # Home page
 GET     /                           controllers.Application.index
 
+GET     /webradio.ogg               controllers.Application.webRadioWithEcho
+GET     /find                       controllers.Application.find
+GET     /curl                       controllers.Application.curl
+GET     /audioEchoEffectGenerate    controllers.Application.audioEchoEffectGenerate
+
+
 # Map static resources from the /public folder to the /assets URL path
 GET     /assets/*file               controllers.Assets.at(path="/public", file)
