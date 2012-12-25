@@ -54,8 +54,11 @@ object CLI {
     val promiseCmdin = stdin.map { cmdin =>
       Iteratee.foreach[Array[Byte]] { bytes =>
         cmdin.write(bytes)
+        } mapDone { _ =>
+          cmdin.close()
+        }
       }
-    }
+
     val promiseCmdout = stdout.map { cmdout =>
       Enumerator.fromStream(cmdout, chunkSize)
     }
@@ -63,10 +66,9 @@ object CLI {
     var promiseOfEnumeratee = (promiseCmdin zip promiseCmdout).map { case (cmdin, cmdout) =>
       enumerateePipe(cmdin, cmdout) ><> 
       Enumeratee.onIterateeDone { () =>
-        process.destroy() // FIXME it shouldn't be required
         val code = process.exitValue()
         logger.debug("exit("+code+") for command"+cmd)
-        stdin.map { _.close() }
+        process.destroy()
       }
     }
     concurrent.Await.result(promiseOfEnumeratee, concurrent.duration.Duration("2 second")) // FIXME need a Enumeratee.flatten
@@ -80,33 +82,17 @@ object CLI {
   def enumerateePipe (
     cmdin: Iteratee[Array[Byte], Unit], 
     cmdout: Enumerator[Array[Byte]]
-  ) : Enumeratee[Array[Byte], Array[Byte]] = {
+  )(implicit ex: ExecutionContext) : Enumeratee[Array[Byte], Array[Byte]] = {
 
     // enumerateePipe: FIXME Not Implemented Yet!
-    Enumeratee.map[Array[Byte]] { b => b }
-    /*
-      import Enumeratee.CheckDone
-      new CheckDone[Array[Byte], Array[Byte]] {
-        // FIXME, I'm trying something probably wrong, this is not working yet...
 
-        def step[A](k: K[Array[Byte], A]): K[Array[Byte], Iteratee[Array[Byte], A]] = {
-          
-          case in @ Input.EOF => {
-            cmdin.feed(in)
-            Done(Cont(k), Input.EOF)
-          }
-          case in => {
-            cmdin.feed(in)
-            val r = Iteratee.flatten(cmdout |>> k(in))
-            new CheckDone[Array[Byte], Array[Byte]] { 
-              def continue[A](k: K[Array[Byte], A]) = Cont(step(k)) 
-            } &> r
-          }
-
-        }
-        def continue[A](k: K[Array[Byte], A]) = Cont(step(k))
+    Enumerator() |>>> cmdin // FIXME (temporary cmdin consuming)
+    
+    new Enumeratee[Array[Byte], Array[Byte]] {
+      def applyOn[A] (it: Iteratee[Array[Byte], A]): Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = {
+        Enumeratee.passAlong[Array[Byte]] &> Iteratee.flatten(cmdout(it))
       }
-    */
+    }
   }
 
 

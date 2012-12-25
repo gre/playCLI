@@ -33,7 +33,7 @@ class CLITest extends Specification {
       val text = "HelloWorld"
       val pipe = CLI.pipe("echo -n "+text)
       val result: Array[Byte] = Await.result(enum &> pipe |>>> bytesJoinConsumer, maxDuration)
-      result must equalTo (text)
+      result must equalTo (stringToBytes(text))
     }
     
     "pipe the equivalent with cat" in {
