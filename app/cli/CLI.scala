@@ -61,13 +61,15 @@ object CLI {
     }
 
     var promiseOfEnumeratee = (promiseCmdin zip promiseCmdout).map { case (cmdin, cmdout) =>
-      enumerateePipe(cmdin, cmdout) ><> Enumeratee.onIterateeDone { () =>
+      enumerateePipe(cmdin, cmdout) ><> 
+      Enumeratee.onIterateeDone { () =>
+        process.destroy() // FIXME it shouldn't be required
         val code = process.exitValue()
         logger.debug("exit("+code+") for command"+cmd)
-        process.destroy()
+        stdin.map { _.close() }
       }
     }
-    concurrent.Await.result(promiseOfEnumeratee, concurrent.duration.Duration("1 second")) // FIXME need a Enumeratee.flatten
+    concurrent.Await.result(promiseOfEnumeratee, concurrent.duration.Duration("2 second")) // FIXME need a Enumeratee.flatten
   }
 
   /**
@@ -80,10 +82,12 @@ object CLI {
     cmdout: Enumerator[Array[Byte]]
   ) : Enumeratee[Array[Byte], Array[Byte]] = {
 
-    Enumeratee.map[Array[Byte]] { b => b } // enumerateePipe: FIXME Not Implemented Yet!
+    // enumerateePipe: FIXME Not Implemented Yet!
+    Enumeratee.map[Array[Byte]] { b => b }
     /*
       import Enumeratee.CheckDone
-      new CheckDone[Array[Byte], Array[Byte]] { // FIXME, I'm trying something, this is not working yet...
+      new CheckDone[Array[Byte], Array[Byte]] {
+        // FIXME, I'm trying something probably wrong, this is not working yet...
 
         def step[A](k: K[Array[Byte], A]): K[Array[Byte], Iteratee[Array[Byte], A]] = {
           
