@@ -16,7 +16,7 @@ import concurrent.{ promise, Future, ExecutionContext }
  * `CLI.consume` creates a process which consume a stream - useful for side effect commands (it takes an [[play.api.libs.iteratee.Enumerator]])
  *
  **
- * Every process' stderr is logged in the console  with a "CLI" logger
+ * Every process' stderr is logged in the console with a "CLI" logger
  */
 object CLI {
 
@@ -31,21 +31,21 @@ object CLI {
    CLI.enumerate("find .")
    * }}}
    */
-  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext): Enumerator[Array[Byte]] = new
-  Enumerator[Array[Byte]] {
-    def apply[A](i: Iteratee[Array[Byte], A]) = Enumerator.flatten[Array[Byte]] {
-      val (process, stdin, stdout) = runProcess(command)
-      stdout map { stdout =>
-        Enumerator.fromStream(stdout, chunkSize).
-        onDoneEnumerating { () =>
-          val code = process.exitValue()
-          logger.debug("exit("+code+") for command"+command)
-          stdin map { _.close() }
-          process.destroy()
+  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext) =
+    new Enumerator[Array[Byte]] {
+      def apply[A](i: Iteratee[Array[Byte], A]) = Enumerator.flatten[Array[Byte]] {
+        val (process, stdin, stdout) = runProcess(command)
+        stdout map { stdout =>
+          Enumerator.fromStream(stdout, chunkSize).
+          onDoneEnumerating { () =>
+            val code = process.exitValue()
+            logger.debug("exit("+code+") for command"+command)
+            stdin map { _.close() }
+            process.destroy()
+          }
         }
-      }
-    } apply i
-  }
+      } apply i
+    }
 
   /**
    * `CLI.pipe` is a way to pipe a command which consume input and generate output
@@ -58,38 +58,36 @@ object CLI {
      oggStream &> CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
    * }}}
    */
-  def pipe (command: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext): Enumeratee[Array[Byte], Array[Byte]] = { // FIXME this current version is not perfectly working yet
+  def pipe (command: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext) = // FIXME this current version is not perfectly working yet
     new Enumeratee[Array[Byte], Array[Byte]] { 
       def applyOn[A](it: Iteratee[Array[Byte], A]): Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = {
         val (process, stdin, stdout) = runProcess(command)
+        logger.debug("enumeratee start for "+command)
 
         Iteratee.flatten {
-          (stdin zip stdout).map { case (cmdin, cmdout) =>
+          (stdin zip stdout).map { case (stdin, stdout) =>
             import scala.concurrent.stm._
 
             val iteratee = Ref(it)
 
-            logger.debug("writing")
-
             def result: Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = Cont(_ match {
               case Input.EOF => {
                 logger.debug("done writing")
-                cmdin.close()
+                stdin.close()
                 Done(iteratee.single.get, Input.EOF)
               }
               case Input.Empty => result
               case Input.El(e) => {
-                cmdin.write(e)
+                stdin.write(e)
                 result
               }
             })
 
             concurrent.future {
-              logger.debug("reading")
               var end = false
               while (!end) {
                 val buffer = new Array[Byte](chunkSize)
-                val chunk = cmdout.read(buffer) match {
+                val chunk = stdout.read(buffer) match {
                   case -1 => None
                   case read =>
                     val input = new Array[Byte](read)
@@ -103,10 +101,9 @@ object CLI {
                 end = chunk.isDefined
               }
               logger.debug("done reading")
-              cmdout.close()
+              stdout.close()
             }
             result mapDone { _ =>
-              cmdin.close()
               val code = process.exitValue()
               logger.debug("exit("+code+") for command"+command)
               process.destroy()
@@ -116,28 +113,6 @@ object CLI {
         }
       }
     }
-  }
-
-  /**
-   * Create an Enumeratee where:
-   * - all input sent to this Enumeratee are plugged to the cmdin (cmdin: Iteratee)
-   * - all input coming from cmdout (cmdout: Enumerator) are streamed to the output of this Enumeratee
-   */
-  def enumerateePipe (
-    cmdin: Iteratee[Array[Byte], Unit], 
-    cmdout: Enumerator[Array[Byte]]
-  )(implicit ex: ExecutionContext) : Enumeratee[Array[Byte], Array[Byte]] = {
-
-    // enumerateePipe: FIXME Not Implemented Yet!
-
-    Enumerator() |>>> cmdin // FIXME (temporary cmdin consuming)
-    
-    new Enumeratee[Array[Byte], Array[Byte]] {
-      def applyOn[A] (it: Iteratee[Array[Byte], A]): Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = {
-        Enumeratee.passAlong[Array[Byte]] &> Iteratee.flatten(cmdout(it))
-      }
-    }
-  }
 
 
   /**
@@ -152,25 +127,24 @@ object CLI {
      CLI.consume("aSideEffectCommand")(anEnumerator)
    * }}}
    */
-  def consume (command: ProcessBuilder)(enumerator: Enumerator[Array[Byte]])(implicit ex: ExecutionContext) = {
+  def consume (command: ProcessBuilder)(enumerator: Enumerator[Array[Byte]])(implicit ex: ExecutionContext) =
     enumerator |>>> Iteratee.flatten[Array[Byte], Unit] {
       val (process, stdin, stdout) = runProcess(command)
 
-      stdout map { out => logStd(out)(logger.info) }
+      stdout map { stdout => logStd(stdout)(logger.info) }
 
-      stdin map { cmdin =>
+      stdin map { stdin =>
         Iteratee.foreach[Array[Byte]] { bytes =>
-          cmdin.write(bytes)
-          } mapDone { _ =>
-            cmdin.close()
-            val code = process.exitValue()
-            logger.debug("exit("+code+") for command"+command)
-            stdout map { _.close() }
-            process.destroy()
-          }
+          stdin.write(bytes)
+        } mapDone { _ =>
+          stdin.close()
+          val code = process.exitValue()
+          logger.debug("exit("+code+") for command"+command)
+          stdout map { _.close() }
+          process.destroy()
+        }
       }
     }
-  }
 
 
   private val logger = play.api.Logger("CLI")
