@@ -5,6 +5,8 @@
 # Home page
 GET     /                           controllers.Application.index
 
+GET     /grep                       controllers.Application.grepDictionary(search: String)
+
 GET     /find                       controllers.Application.find
 GET     /curl                       controllers.Application.curl
 GET     /audioEchoEffectGenerate    controllers.Application.audioEchoEffectGenerate

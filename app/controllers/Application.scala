@@ -19,6 +19,14 @@ object Application extends Controller {
 
   def index = Action(Ok(views.html.index()))
 
+  // grep words
+  def grepDictionary(search: String) = Action {
+    Ok.stream(
+      Enumerator.fromFile(new File("/usr/share/dict/words")) &>
+      CLI.pipe(Seq("grep", search), 64)
+    ) withHeaders (CONTENT_TYPE -> "text/plain")
+  }
+
   // Re-stream a web radio by adding echo with sox
   def webRadioWithEcho = Action {
     val src = "http://radio.hbr1.com:19800/ambient.ogg"
@@ -58,9 +66,10 @@ object Application extends Controller {
   // consume a ogg sound, add an echo effect and store in a /tmp/out.ogg file
   def audioEchoEffectGenerate = Action {
     val file = File.createTempFile("sample_with_echo_", ".ogg") // handle myself the output
-    val consumer = CLI.consume(Process("sox -t ogg - -t ogg - echo 0.5 0.7 60 1") #> file)
+    val enum = Enumerator.fromFile(Play.getFile("conf/exemple.ogg"))
+    val result = CLI.consume(Process("sox -t ogg - -t ogg - echo 0.5 0.7 60 1") #> file)(enum)
     AsyncResult {
-      (Enumerator.fromFile(Play.getFile("conf/exemple.ogg")) |>>> consumer).map { _ =>
+      result.map { _ =>
         Ok("'"+file.getAbsolutePath+"' file has been generated.")
       }
     }

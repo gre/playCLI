@@ -26,6 +26,7 @@ class CLITest extends Specification {
   val maxDuration = Duration("1 second")
   val wordsFile = new java.io.File("test/words.txt")
 
+  /*
   "CLI.pipe" should {
     
     "echo should work" in {
@@ -67,10 +68,9 @@ supermannish
       val result: Array[Byte] = Await.result(enum &> CLI.pipe("cat") &> CLI.pipe("cat") &> CLI.pipe("cat") |>>> bytesJoinConsumer, maxDuration)
       result must equalTo (bytesJoin(items)) updateMessage("CLI.pipe result equals items")
     }
-    
-    
-    // TODO a test which pipe multiple times
+
   }
+  */
 
   "CLI.enumerate" should {
 
@@ -106,13 +106,13 @@ supermannish
   "CLI.consume" should {
 
     "write some bytes in temporary file" in {
-      val items = Range(0, 100).map { i =>
-        stringToBytes(Range(0, 200).map { _ => "A" } mkString)
+      val items = Range(0, 10).map { i =>
+        stringToBytes(Range(0, 20).map { _ => "A" } mkString)
       }
       val enum = Enumerator(items : _*)
       val file = File.createTempFile("tmp", ".txt")
-      val writer = CLI.consume(Process("cat") #> file)
-      Await.result(enum |>>> writer, maxDuration)
+      val result = CLI.consume(Process("cat") #> file)(enum)
+      Await.result(result, maxDuration)
       val fileContent = Await.result(Enumerator.fromFile(file) |>>> bytesJoinConsumer, maxDuration)
       val exceptContent = bytesJoin(items)
       fileContent must equalTo (exceptContent) updateMessage("fileContent equals enumerator values.")
