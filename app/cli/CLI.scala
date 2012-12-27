@@ -98,11 +98,12 @@ object CLI {
                   val it = iteratee.single.get.feed(Input.El(bytes))
                   iteratee.single.swap(Iteratee.flatten(it))
                 }
-                end = chunk.isDefined
+                end = !chunk.isDefined
               }
               logger.debug("done reading")
               stdout.close()
             }
+
             result mapDone { _ =>
               val code = process.exitValue()
               logger.debug("exit("+code+") for command"+command)
