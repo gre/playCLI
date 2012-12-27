@@ -3,7 +3,6 @@ package cli
 import java.io._
 import scala.sys.process.{ Process, ProcessIO, ProcessBuilder }
 import play.api.libs.iteratee._
-
 import concurrent.{ Promise, Future, ExecutionContext }
 
 /**
@@ -25,7 +24,6 @@ import concurrent.{ Promise, Future, ExecutionContext }
  * @version 0.1
  */
 object CLI {
-
 
   /**
    * Returns an Enumerator from a command which generate output - nothing is sent to the CLI input.
@@ -138,7 +136,6 @@ object CLI {
       }
     }
 
-
   /**
    * Consumes an Enumerator with a command - the CLI output is logged.
    *
@@ -174,7 +171,6 @@ object CLI {
       }
     }
 
-
   private val logger = play.api.Logger("CLI")
 
   private def logStd (stream: InputStream)(loggerF: (=>String)=>Unit ) {
@@ -189,14 +185,13 @@ object CLI {
 
   /**
    * Run a process from a command 
-   * @return a (process, future of stdin, future of stdout)
+   * @return a (process, future of stdin, future of stdout, future of stderr)
    */
   private def runProcess (command: ProcessBuilder)(implicit ex: ExecutionContext)
   : (Process, Future[OutputStream], Future[InputStream], Future[InputStream]) = {
     val promiseStdin = Promise[OutputStream]()
     val promiseStdout = Promise[InputStream]()
     val promiseStderr = Promise[InputStream]()
-
     val process = command run new ProcessIO(
       (stdin: OutputStream) => promiseStdin.success(stdin),
       (stdout: InputStream) => promiseStdout.success(stdout),
