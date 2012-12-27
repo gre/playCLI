@@ -7,25 +7,31 @@ import play.api.libs.iteratee._
 import concurrent.{ Promise, Future, ExecutionContext }
 
 /**
- * CLI defines helpers to deal with UNIX command with play iteratee.
+ * CLI defines helpers to deal with UNIX command with Play Framework iteratees.
+ *
+ * ==Overview==
  *
  * Depending on your needs, you can Enumerate / Pipe / Consume an UNIX command:
  *
- * `CLI.enumerate` is a way to create a stream from a command which generate output (it creates an [[play.api.libs.iteratee.Enumerator]])
- * `CLI.pipe` is a way to pipe a command which consume input and generate output (it creates an [[play.api.libs.iteratee.Enumeratee]])
- * `CLI.consume` creates a process which consume a stream - useful for side effect commands (it takes an [[play.api.libs.iteratee.Enumerator]])
+ * [[CLI.enumerate]] is a way to create a stream from a command which generate output (it creates an [[play.api.libs.iteratee.Enumerator]])
+
+ * [[CLI.pipe]] is a way to pipe a command which consume input and generate output (it creates an [[play.api.libs.iteratee.Enumeratee]])
+
+ * [[CLI.consume]] creates a process which consume a stream - useful for side effect commands (it takes an [[play.api.libs.iteratee.Enumerator]])
  *
- **
- * Every process' stderr is logged in the console with a "CLI" logger
+ * ==Note==
+ * Every process' `stderr` is logged in the console with a "CLI" logger
+ *
+ * @version 0.1
  */
 object CLI {
 
 
   /**
-   * `CLI.enumerate` is a way to create a stream from a command which generate output - nothing is sent to the CLI input
+   * Returns an Enumerator from a command which generate output - nothing is sent to the CLI input.
    *
    * @param command the UNIX command
-   * @return an [[play.api.libs.iteratee.Enumerator]] from the CLI output.
+   * @return an [[play.api.libs.iteratee.Enumerator]] from this command which generate output.
    *
    * @example {{{
    CLI.enumerate("find .")
@@ -50,10 +56,11 @@ object CLI {
     }
 
   /**
-   * `CLI.pipe` is a way to pipe a command which consume input and generate output
+   * Returns an Enumeratee for piping a command which consume input and generate output.
    *
    * @param command the UNIX command
-   * @return an [[play.api.libs.iteratee.Enumeratee]] from the CLI piping.
+   * @return an [[play.api.libs.iteratee.Enumeratee]] from the pipe of this command which consume input and generate output.
+
    *
    * @example {{{
      // Add an echo to an ogg audio stream.
@@ -133,19 +140,20 @@ object CLI {
 
 
   /**
-   * `CLI.consume` creates a process which consume a stream - useful for side effect commands 
+   * Consumes an Enumerator with a command - the CLI output is logged.
    *
-   * the CLI stdout is logged in the console ("CLI" logger)
+   * This method is useful for side effect commands.
    *
    * @param command the UNIX command
-   * @param enumerator the enumerator producing data consumed by the CLI
+   * @param enumerator the enumerator producing data consumed by this command
+   * @return a `Future[Int]` completed when the consuming has finished. The Future value contains the command code value.
    *
    * @example {{{
      CLI.consume("aSideEffectCommand")(anEnumerator)
    * }}}
    */
   def consume (command: ProcessBuilder)(enumerator: Enumerator[Array[Byte]])(implicit ex: ExecutionContext) =
-    enumerator |>>> Iteratee.flatten[Array[Byte], Unit] {
+    enumerator |>>> Iteratee.flatten[Array[Byte], Int] {
       logger.debug("consume "+command)
       val (process, stdin, stdout, stderr) = runProcess(command)
 
@@ -161,6 +169,7 @@ object CLI {
           logger.debug("exit("+code+") for command"+command)
           stdout map { _.close() }
           process.destroy()
+          code
         }
       }
     }
