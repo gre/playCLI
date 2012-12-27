@@ -4,7 +4,7 @@ import java.io._
 import scala.sys.process.{ Process, ProcessIO, ProcessBuilder }
 import play.api.libs.iteratee._
 
-import concurrent.{ promise, Future, ExecutionContext }
+import concurrent.{ Promise, Future, ExecutionContext }
 
 /**
  * CLI defines helpers to deal with UNIX command with play iteratee.
@@ -68,37 +68,43 @@ object CLI {
           (stdin zip stdout).map { case (stdin, stdout) =>
             import scala.concurrent.stm._
 
+            val endP = Promise[Unit]()
+            val end = endP.future
             val iteratee = Ref(it)
 
-            def result: Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = Cont(_ match {
+            def result: Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = Cont {
               case Input.EOF => {
                 logger.debug("done writing")
                 stdin.close()
-                Done(iteratee.single.get, Input.EOF)
+                Iteratee.flatten {
+                  end map { _ =>
+                    Done(iteratee.single.get, Input.EOF)
+                  }
+                }
               }
               case Input.Empty => result
               case Input.El(e) => {
                 stdin.write(e)
                 result
               }
-            })
+            }
 
-            concurrent.future {
-              var end = false
-              while (!end) {
+            Future {
+              while (!end.isCompleted) {
                 val buffer = new Array[Byte](chunkSize)
-                val chunk = stdout.read(buffer) match {
-                  case -1 => None
-                  case read =>
+                stdout.read(buffer) match {
+                  case -1 => 
+                    endP.success(())
+                  
+                  case read => 
                     val input = new Array[Byte](read)
                     System.arraycopy(buffer, 0, input, 0, read)
-                    Some(input)
+                    val p = Promise[Iteratee[Array[Byte], A]]()
+                    val next = Iteratee.flatten(p.future)
+                    val it = iteratee.single.swap(next)
+                    p.success(Iteratee.flatten(it.feed(Input.El(input))))
+                    next
                 }
-                chunk map { bytes =>
-                  val it = iteratee.single.get.feed(Input.El(bytes))
-                  iteratee.single.swap(Iteratee.flatten(it))
-                }
-                end = !chunk.isDefined
               }
               logger.debug("done reading")
               stdout.close()
@@ -165,8 +171,8 @@ object CLI {
    * @return a (process, future of stdin, future of stdout)
    */
   private def runProcess (command: ProcessBuilder)(implicit ex: ExecutionContext): (Process, Future[OutputStream], Future[InputStream]) = {
-    val promiseStdin = promise[OutputStream]()
-    val promiseStdout = promise[InputStream]()
+    val promiseStdin = Promise[OutputStream]()
+    val promiseStdout = Promise[InputStream]()
 
     val process = command run new ProcessIO(
       (stdin: OutputStream) => promiseStdin.success(stdin),
