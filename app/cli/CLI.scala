@@ -34,13 +34,15 @@ object CLI {
   def enumerate (command: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext) =
     new Enumerator[Array[Byte]] {
       def apply[A](i: Iteratee[Array[Byte], A]) = Enumerator.flatten[Array[Byte]] {
-        val (process, stdin, stdout) = runProcess(command)
+        logger.debug("enumerate "+command)
+        val (process, stdin, stdout, stderr) = runProcess(command)
+        stderr map { stderr => logStd(stderr)(logger.error) }
         stdout map { stdout =>
           Enumerator.fromStream(stdout, chunkSize).
           onDoneEnumerating { () =>
+            stdin map { _.close() }
             val code = process.exitValue()
             logger.debug("exit("+code+") for command"+command)
-            stdin map { _.close() }
             process.destroy()
           }
         }
@@ -58,37 +60,23 @@ object CLI {
      oggStream &> CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
    * }}}
    */
-  def pipe (command: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext) = // FIXME this current version is not perfectly working yet
+  def pipe (command: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext) =
     new Enumeratee[Array[Byte], Array[Byte]] { 
       def applyOn[A](it: Iteratee[Array[Byte], A]): Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = {
-        val (process, stdin, stdout) = runProcess(command)
-        logger.debug("enumeratee start for "+command)
+        logger.debug("pipe "+command)
+        val (process, stdin, stdout, stderr) = runProcess(command)
+
+        stderr map { stderr => logStd(stderr)(logger.error) }
 
         Iteratee.flatten {
           (stdin zip stdout).map { case (stdin, stdout) =>
             import scala.concurrent.stm._
 
+            val iteratee = Ref(it)
             val endP = Promise[Unit]()
             val end = endP.future
-            val iteratee = Ref(it)
 
-            def result: Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = Cont {
-              case Input.EOF => {
-                logger.debug("done writing")
-                stdin.close()
-                Iteratee.flatten {
-                  end map { _ =>
-                    Done(iteratee.single.get, Input.EOF)
-                  }
-                }
-              }
-              case Input.Empty => result
-              case Input.El(e) => {
-                stdin.write(e)
-                result
-              }
-            }
-
+            // Reading stdout
             Future {
               while (!end.isCompleted) {
                 val buffer = new Array[Byte](chunkSize)
@@ -103,18 +91,40 @@ object CLI {
                     val next = Iteratee.flatten(p.future)
                     val it = iteratee.single.swap(next)
                     p.success(Iteratee.flatten(it.feed(Input.El(input))))
-                    next
                 }
               }
               logger.debug("done reading")
               stdout.close()
             }
 
+            // Writing stdin
+            def step(): Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = Cont {
+              case Input.El(e) => {
+                stdin.write(e)
+                step
+              }
+              case Input.Empty => step
+              case Input.EOF => {
+                logger.debug("done writing")
+                stdin.close()
+                Iteratee.flatten {
+                  end map { _ =>
+                    logger.debug("Done step reached")
+                    Done(iteratee.single.get, Input.EOF)
+                  }
+                }
+              }
+            }
+            val result = step()
+
+            // When Writing and Reading is finished
             result mapDone { _ =>
+              println("MAP DONE NEVER REACHED !") // FIXME
               val code = process.exitValue()
               logger.debug("exit("+code+") for command"+command)
               process.destroy()
             }
+
             result
           }
         }
@@ -136,9 +146,11 @@ object CLI {
    */
   def consume (command: ProcessBuilder)(enumerator: Enumerator[Array[Byte]])(implicit ex: ExecutionContext) =
     enumerator |>>> Iteratee.flatten[Array[Byte], Unit] {
-      val (process, stdin, stdout) = runProcess(command)
+      logger.debug("consume "+command)
+      val (process, stdin, stdout, stderr) = runProcess(command)
 
       stdout map { stdout => logStd(stdout)(logger.info) }
+      stderr map { stderr => logStd(stderr)(logger.error) }
 
       stdin map { stdin =>
         Iteratee.foreach[Array[Byte]] { bytes =>
@@ -170,15 +182,17 @@ object CLI {
    * Run a process from a command 
    * @return a (process, future of stdin, future of stdout)
    */
-  private def runProcess (command: ProcessBuilder)(implicit ex: ExecutionContext): (Process, Future[OutputStream], Future[InputStream]) = {
+  private def runProcess (command: ProcessBuilder)(implicit ex: ExecutionContext)
+  : (Process, Future[OutputStream], Future[InputStream], Future[InputStream]) = {
     val promiseStdin = Promise[OutputStream]()
     val promiseStdout = Promise[InputStream]()
+    val promiseStderr = Promise[InputStream]()
 
     val process = command run new ProcessIO(
       (stdin: OutputStream) => promiseStdin.success(stdin),
       (stdout: InputStream) => promiseStdout.success(stdout),
-      logStd(_)(logger.warn)
+      (stderr: InputStream) => promiseStderr.success(stderr)
     )
-    (process, promiseStdin.future, promiseStdout.future)
+    (process, promiseStdin.future, promiseStdout.future, promiseStderr.future)
   }
 }
