@@ -30,7 +30,7 @@ object Application extends Controller {
   // Re-stream a web radio by adding echo with sox
   def webRadioWithEcho = Action {
     val src = "http://radio.hbr1.com:19800/ambient.ogg"
-    var stream = Concurrent.unicast[Array[Byte]]( channel => {
+    val stream = Concurrent.unicast[Array[Byte]]( channel => {
       WS.url(src).get { header => Iteratee.foreach[Array[Byte]](channel.push(_)) }
     }, () => ())
     val addEcho = CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
@@ -39,8 +39,9 @@ object Application extends Controller {
 
   // Retrieve an online video, resize it, stream it
   def reEncodeAndStreamVideo = Action {
-    var src = "http://ftp.nluug.nl/pub/graphics/blender/demo/movies/glsl_bird.avi"
-    var stream = Concurrent.unicast[Array[Byte]]( channel => {
+    //val src = "http://ftp.nluug.nl/pub/graphics/blender/demo/movies/glsl_bird.avi"
+    val src = "http://ftp.nluug.nl/pub/graphics/blender/demo/movies/Sintel.2010.1080p.mkv"
+    val stream = Concurrent.unicast[Array[Byte]]( channel => {
       WS.url(src).get { header => Iteratee.foreach[Array[Byte]](channel.push(_)) }
     }, () => ())
     val scaleHalf = CLI.pipe("ffmpeg -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")

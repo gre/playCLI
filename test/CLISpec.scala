@@ -26,7 +26,6 @@ class CLITest extends Specification {
   val maxDuration = Duration("1 second")
   val wordsFile = new java.io.File("test/words.txt")
 
-  /*
   "CLI.pipe" should {
     
     "echo should work" in {
@@ -70,7 +69,6 @@ supermannish
     }
 
   }
-  */
 
   "CLI.enumerate" should {
 
