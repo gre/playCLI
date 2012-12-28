@@ -12,7 +12,8 @@ GET     /curl                       controllers.Application.curl
 GET     /audioEchoEffectGenerate    controllers.Application.audioEchoEffectGenerate
 
 GET     /webradio.ogg               controllers.Application.webRadioWithEcho
-GET     /example.avi                controllers.Application.reEncodeAndStreamVideo
+GET     /distant.avi                controllers.Application.downloadReEncodeAndStreamVideo
+GET     /local.avi                  controllers.Application.reEncodeAndStreamVideo
 
 
 # Map static resources from the /public folder to the /assets URL path

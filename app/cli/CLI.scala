@@ -87,7 +87,6 @@ object CLI {
                 val buffer = new Array[Byte](chunkSize)
                 stdout.read(buffer) match {
                   case -1 => 
-                    logger.debug("done reading")
                     stdout.close()
                     endP.success(())
                   
@@ -110,11 +109,9 @@ object CLI {
               }
               case Input.Empty => step
               case Input.EOF => {
-                logger.debug("done writing")
                 stdin.close()
                 Iteratee.flatten {
                   end map { _ =>
-                    logger.debug("Done step reached")
                     Done(iteratee.single.get, Input.EOF)
                   }
                 }
@@ -122,15 +119,13 @@ object CLI {
             }
             val result = step()
 
-            // When Writing and Reading is finished
-            result mapDone { _ =>
-              println("MAP DONE NEVER REACHED !") // FIXME
+            // When Writing and Reading is finished, stop everything, return the final iteratee with EOF
+            result mapDone { it =>
               val code = process.exitValue()
               logger.debug("exit("+code+") for command"+command)
               process.destroy()
+              Iteratee.flatten(it.feed(Input.EOF))
             }
-
-            result
           }
         }
       }

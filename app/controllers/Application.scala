@@ -38,7 +38,7 @@ object Application extends Controller {
   }
 
   // Retrieve an online video, resize it, stream it
-  def reEncodeAndStreamVideo = Action {
+  def downloadReEncodeAndStreamVideo = Action {
     //val src = "http://ftp.nluug.nl/pub/graphics/blender/demo/movies/glsl_bird.avi"
     val src = "http://ftp.nluug.nl/pub/graphics/blender/demo/movies/Sintel.2010.1080p.mkv"
     val stream = Concurrent.unicast[Array[Byte]]( channel => {
@@ -47,6 +47,16 @@ object Application extends Controller {
     val scaleHalf = CLI.pipe("ffmpeg -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")
     Ok.stream(stream &> scaleHalf).withHeaders(CONTENT_TYPE -> "video/avi")
   }
+  
+  // Use a local video, resize it, stream it
+  def reEncodeAndStreamVideo = Action {
+    // download the video from: http://ftp.nluug.nl/pub/graphics/blender/demo/movies/Sintel.2010.1080p.mkv
+    val stream = Enumerator.fromFile(Play.getFile("Sintel.2010.1080p.mkv"))
+    val scaleHalf = CLI.pipe("ffmpeg -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")
+    Ok.stream(stream &> scaleHalf).withHeaders(CONTENT_TYPE -> "video/avi")
+  }
+
+
 
   // List all files in this Play project
   def find = Action {
