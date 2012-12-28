@@ -87,6 +87,8 @@ object CLI {
                 val buffer = new Array[Byte](chunkSize)
                 stdout.read(buffer) match {
                   case -1 => 
+                    logger.debug("done reading")
+                    stdout.close()
                     endP.success(())
                   
                   case read => 
@@ -98,8 +100,6 @@ object CLI {
                     p.success(Iteratee.flatten(it.feed(Input.El(input))))
                 }
               }
-              logger.debug("done reading")
-              stdout.close()
             }
 
             // Writing stdin
