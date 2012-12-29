@@ -72,10 +72,6 @@ supermannish
 
   "CLI.enumerate" should {
 
-    "throw IOException for unknown command" in {
-      (CLI.enumerate("thisIsNotAValidCommand") |>>> bytesJoinConsumer) should throwA[java.io.IOException]
-    }
-
     "echo" in {
       val text = "HelloWorld"
       val enum = CLI.enumerate("echo -n "+text)
