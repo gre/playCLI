@@ -41,11 +41,11 @@ object CLI {
         logger.debug("enumerate "+command)
         val (process, stdin, stdout, stderr) = runProcess(command)
 
-        stderr.map(log(_)(logger.error))
+        stderr.map(logStream(_)(logger.error))
 
         val done = Promise[Unit]() // fulfilled when either done consuming / either done enumerating
 
-        val iteratee = consumer mapDone { r => done.success(()); r }
+        val iteratee = consumer mapDone { r => done.trySuccess(()); r }
 
         // When done, close everything
         done.future onComplete { _ =>
@@ -56,7 +56,7 @@ object CLI {
 
         stdout flatMap { stdout => 
           Enumerator.fromStream(stdout, chunkSize)
-            .onDoneEnumerating { () => done.success(()) }
+            .onDoneEnumerating { () => done.trySuccess(()) }
             .apply(iteratee)
         }
       }
@@ -81,7 +81,7 @@ object CLI {
         logger.debug("pipe "+command)
         val (process, stdin, stdout, stderr) = runProcess(command)
 
-        stderr.map(log(_)(logger.error))
+        stderr.map(logStream(_)(logger.error))
 
         Iteratee.flatten {
           (stdin zip stdout).map { case (stdin, stdout) =>
@@ -179,8 +179,8 @@ object CLI {
       logger.debug("consume "+command)
       val (process, stdin, stdout, stderr) = runProcess(command)
 
-      stdout.map(log(_)(logger.info))
-      stderr.map(log(_)(logger.error))
+      stdout.map(logStream(_)(logger.info))
+      stderr.map(logStream(_)(logger.error))
 
       stdin map { stdin =>
         Iteratee.foreach[Array[Byte]] { bytes =>
@@ -194,9 +194,10 @@ object CLI {
       }
     }
 
+
   private val logger = play.api.Logger("CLI")
 
-  private def log (stream: InputStream)(loggerF: (=>String)=>Unit) {
+  private def logStream (stream: InputStream)(loggerF: (=>String)=>Unit) {
     val br = new java.io.BufferedReader(new InputStreamReader(stream))
     var read = br.readLine()
     while(read != null) {
