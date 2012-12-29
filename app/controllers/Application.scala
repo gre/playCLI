@@ -20,8 +20,7 @@ object Application extends Controller {
   // Pipe examples
   val grep = (q: String) => CLI.pipe(Seq("grep", q), 64)
   val addEchoToOgg = CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
-  val scaleVideoHalf = CLI.pipe("ffmpeg -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")
-
+  val scaleVideoHalf = CLI.pipe("ffmpeg -v warning -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")
 
   def index = Action(Ok(views.html.index()))
 
