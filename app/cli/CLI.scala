@@ -37,20 +37,29 @@ object CLI {
    */
   def enumerate (command: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext) =
     new Enumerator[Array[Byte]] {
-      def apply[A](i: Iteratee[Array[Byte], A]) = Enumerator.flatten[Array[Byte]] {
+      def apply[A](consumer: Iteratee[Array[Byte], A]) = {
         logger.debug("enumerate "+command)
         val (process, stdin, stdout, stderr) = runProcess(command)
-        stderr map { stderr => logStd(stderr)(logger.error) }
-        stdout map { stdout =>
-          Enumerator.fromStream(stdout, chunkSize).
-          onDoneEnumerating { () =>
-            stdin map { _.close() }
-            val code = process.exitValue()
-            logger.debug("exit("+code+") for command"+command)
-            process.destroy()
-          }
+
+        stderr.map(log(_)(logger.error))
+
+        val done = Promise[Unit]() // fulfilled when either done consuming / either done enumerating
+
+        val iteratee = consumer mapDone { r => done.success(()); r }
+
+        // When done, close everything
+        done.future onComplete { _ =>
+          stdin map (_.close())
+          stderr map (_.close())
+          closeProcess(process, command.toString)
         }
-      } apply i
+
+        stdout flatMap { stdout => 
+          Enumerator.fromStream(stdout, chunkSize)
+            .onDoneEnumerating { () => done.success(()) }
+            .apply(iteratee)
+        }
+      }
     }
 
   /**
@@ -67,28 +76,52 @@ object CLI {
    */
   def pipe (command: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext) =
     new Enumeratee[Array[Byte], Array[Byte]] { 
-      def applyOn[A](it: Iteratee[Array[Byte], A]): Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = {
+      def applyOn[A](consumer: Iteratee[Array[Byte], A]) = {
+
         logger.debug("pipe "+command)
         val (process, stdin, stdout, stderr) = runProcess(command)
 
-        stderr map { stderr => logStd(stderr)(logger.error) }
+        stderr.map(log(_)(logger.error))
 
         Iteratee.flatten {
           (stdin zip stdout).map { case (stdin, stdout) =>
             import scala.concurrent.stm._
 
-            val iteratee = Ref(it)
-            val endP = Promise[Unit]()
-            val end = endP.future
+            val doneReading = Promise[Unit]()
+            val doneWriting = Promise[Unit]()
 
-            // Reading stdout
+            // When finished to read, close stdout
+            doneReading.future onComplete { _ =>
+              logger.trace("finished to read stdout for"+command)
+              stdout.close()
+            }
+
+            // When finished to write, close stdin
+            doneWriting.future onComplete { _ =>
+              logger.trace("finished to write stdin for"+command)
+              stdin.close()
+            }
+
+            // When reading/writing is finished, terminate the process
+            (doneReading.future zip doneWriting.future) onComplete { _ =>
+              stderr map (_.close())
+              closeProcess(process, command.toString)
+            }
+
+            // When the consumer has finished, stop everything
+            val iteratee = Ref(consumer mapDone { r =>
+              doneReading.trySuccess(())
+              doneWriting.trySuccess(())
+              r
+            })
+
+            // Reading stdout and accumulating iteratee
             Future {
-              while (!end.isCompleted) {
+              while (!doneReading.future.isCompleted) {
                 val buffer = new Array[Byte](chunkSize)
                 stdout.read(buffer) match {
                   case -1 => 
-                    stdout.close()
-                    endP.success(())
+                    doneReading.trySuccess(())
                   
                   case read => 
                     val input = new Array[Byte](read)
@@ -101,7 +134,7 @@ object CLI {
               }
             }
 
-            // Writing stdin
+            // Writing stdin iteratee loop (until EOF)
             def step(): Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = Cont {
               case Input.El(e) => {
                 stdin.write(e)
@@ -109,9 +142,9 @@ object CLI {
               }
               case Input.Empty => step
               case Input.EOF => {
-                stdin.close()
+                doneWriting.trySuccess(())
                 Iteratee.flatten {
-                  end map { _ =>
+                  doneReading.future map { _ =>
                     Done(iteratee.single.get, Input.EOF)
                   }
                 }
@@ -119,11 +152,8 @@ object CLI {
             }
             val result = step()
 
-            // When Writing and Reading is finished, stop everything, return the final iteratee with EOF
+            // Finish with EOF
             result mapDone { it =>
-              val code = process.exitValue()
-              logger.debug("exit("+code+") for command"+command)
-              process.destroy()
               Iteratee.flatten(it.feed(Input.EOF))
             }
           }
@@ -149,33 +179,30 @@ object CLI {
       logger.debug("consume "+command)
       val (process, stdin, stdout, stderr) = runProcess(command)
 
-      stdout map { stdout => logStd(stdout)(logger.info) }
-      stderr map { stderr => logStd(stderr)(logger.error) }
+      stdout.map(log(_)(logger.info))
+      stderr.map(log(_)(logger.error))
 
       stdin map { stdin =>
         Iteratee.foreach[Array[Byte]] { bytes =>
           stdin.write(bytes)
         } mapDone { _ =>
           stdin.close()
-          val code = process.exitValue()
-          logger.debug("exit("+code+") for command"+command)
-          stdout map { _.close() }
-          process.destroy()
-          code
+          stdout map (_.close())
+          stderr map (_.close())
+          closeProcess(process, command.toString)
         }
       }
     }
 
   private val logger = play.api.Logger("CLI")
 
-  private def logStd (stream: InputStream)(loggerF: (=>String)=>Unit ) {
+  private def log (stream: InputStream)(loggerF: (=>String)=>Unit) {
     val br = new java.io.BufferedReader(new InputStreamReader(stream))
     var read = br.readLine()
     while(read != null) {
       loggerF(read)
       read = br.readLine()
     }
-    stream.close()
   }
 
   /**
@@ -194,4 +221,12 @@ object CLI {
     )
     (process, promiseStdin.future, promiseStdout.future, promiseStderr.future)
   }
+
+  private def closeProcess (process: Process, commandName: String): Int = {
+    val code = process.exitValue()
+    logger.debug("exit("+code+") for command"+commandName)
+    process.destroy()
+    code
+  }
+
 }
