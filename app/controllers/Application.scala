@@ -23,7 +23,7 @@ object Application extends Controller {
   val scaleVideoHalf = CLI.pipe("ffmpeg -v warning -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")
 
   // Consume an stream with url and push it in a socket with f
-  def proxy (url: String)(f: Socket.Out[Array[Byte]] => Unit) = 
+  def proxy[A] (url: String)(f: Socket.Out[Array[Byte]] => Iteratee[Array[Byte], A]): Iteratee[Array[Byte], Unit] => Unit = 
     (socket: Socket.Out[Array[Byte]]) => WS.url(url).withTimeout(-1).get(headers => f(socket))
 
   def index = Action(Ok(views.html.index()))
@@ -52,7 +52,7 @@ object Application extends Controller {
   // Use a local video, resize it, stream it
   def reEncodeAndStreamVideo = Action {
     val stream = Enumerator.fromFile(Play.getFile("Sintel.2010.1080p.mkv")) // download it on sintel.org
-    Ok.stream(proxy(src)(scaleVideoHalf &> _))
+    Ok.stream(stream &> scaleVideoHalf)
       .withHeaders(CONTENT_TYPE -> "video/avi")
   }
 
