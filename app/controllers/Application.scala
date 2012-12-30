@@ -22,6 +22,10 @@ object Application extends Controller {
   val addEchoToOgg = CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
   val scaleVideoHalf = CLI.pipe("ffmpeg -v warning -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")
 
+  // Consume an stream with url and push it in a socket with f
+  def proxy (url: String)(f: Socket.Out[Array[Byte]] => Unit) = 
+    (socket: Socket.Out[Array[Byte]]) => WS.url(url).withTimeout(-1).get(headers => f(socket))
+
   def index = Action(Ok(views.html.index()))
 
   // grep words
@@ -31,25 +35,24 @@ object Application extends Controller {
       .withHeaders(CONTENT_TYPE -> "text/plain")
   }
 
-
   // Re-stream a web radio by adding echo with sox
   def webRadioWithEcho = Action {
     val src = "http://radio.hbr1.com:19800/ambient.ogg"
-    Ok.stream((socket: Socket.Out[Array[Byte]]) => WS.url(src).get(headers => addEchoToOgg &> socket))
+    Ok.stream(proxy(src)(addEchoToOgg &> _))
       .withHeaders(CONTENT_TYPE -> "audio/ogg")
   }
 
   // Retrieve an online video, resize it, stream it
   def downloadReEncodeAndStreamVideo = Action {
     val src = "http://ftp.nluug.nl/pub/graphics/blender/demo/movies/Sintel.2010.1080p.mkv"
-    Ok.stream((socket: Socket.Out[Array[Byte]]) => WS.url(src).get(headers => scaleVideoHalf &> socket))
+    Ok.stream(proxy(src)(scaleVideoHalf &> _))
       .withHeaders(CONTENT_TYPE -> "video/avi")
   }
   
   // Use a local video, resize it, stream it
   def reEncodeAndStreamVideo = Action {
     val stream = Enumerator.fromFile(Play.getFile("Sintel.2010.1080p.mkv")) // download it on sintel.org
-    Ok.stream(stream &> scaleVideoHalf)
+    Ok.stream(proxy(src)(scaleVideoHalf &> _))
       .withHeaders(CONTENT_TYPE -> "video/avi")
   }
 
