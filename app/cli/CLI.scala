@@ -113,6 +113,7 @@ object CLI {
 
               // When consumer has done, trigger done for reading and writing
               val iteratee = Ref(consumer mapDone { r =>
+                logger.trace("consumer has done for "+command)
                 doneReading.trySuccess(())
                 doneWriting.trySuccess(())
                 r
@@ -236,6 +237,7 @@ object CLI {
   }
 
   private def terminateProcess (process: Process, commandName: String): Int = {
+    logger.trace("terminating process for command "+commandName)
     val code = process.exitValue()
     logger.debug("exit("+code+") for command "+commandName)
     process.destroy()
