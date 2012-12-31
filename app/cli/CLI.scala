@@ -25,6 +25,15 @@ import concurrent.{ Promise, Future, ExecutionContext }
  */
 object CLI {
 
+  import scala.concurrent.ExecutionContext
+  object internal {
+    implicit lazy val defaultExecutionContext: ExecutionContext = {
+      val playConfig = play.api.Play.maybeApplication.map(_.configuration)
+      val nb = playConfig.flatMap(_.getInt("CLI.threadpool.size")).getOrElse(50)
+      ExecutionContext.fromExecutorService(java.util.concurrent.Executors.newFixedThreadPool(nb))
+    }
+  }
+
   /**
    * Returns an Enumerator from a command which generate output - nothing is sent to the CLI input.
    *
@@ -35,9 +44,10 @@ object CLI {
    CLI.enumerate("find .")
    * }}}
    */
-  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext) =
+  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024 * 8) =
     new Enumerator[Array[Byte]] {
       def apply[A](consumer: Iteratee[Array[Byte], A]) = {
+        import internal.defaultExecutionContext
         runProcess(command) map { case (process, stdin, stdout, stderr) =>
           logger.debug("enumerate "+command)
           stderr.map(logStream(_)(logger.warn))
@@ -78,9 +88,10 @@ object CLI {
      oggStream &> CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
    * }}}
    */
-  def pipe (command: ProcessBuilder, chunkSize: Int = 1024 * 8)(implicit ex: ExecutionContext) =
+  def pipe (command: ProcessBuilder, chunkSize: Int = 1024 * 8) =
     new Enumeratee[Array[Byte], Array[Byte]] { 
       def applyOn[A](consumer: Iteratee[Array[Byte], A]) = {
+        import internal.defaultExecutionContext
         runProcess(command) map { case (process, stdin, stdout, stderr) =>
           logger.debug("pipe "+command)
 
@@ -179,8 +190,9 @@ object CLI {
      CLI.consume("aSideEffectCommand")(anEnumerator)
    * }}}
    */
-  def consume (command: ProcessBuilder)(enumerator: Enumerator[Array[Byte]])(implicit ex: ExecutionContext) =
+  def consume (command: ProcessBuilder)(enumerator: Enumerator[Array[Byte]]) =
     enumerator |>>> Iteratee.flatten[Array[Byte], Int] {
+      import internal.defaultExecutionContext
       runProcess(command) map { case (process, stdin, stdout, stderr) =>
         logger.debug("consume "+command)
 
