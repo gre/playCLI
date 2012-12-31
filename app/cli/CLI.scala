@@ -1,9 +1,9 @@
 package cli
 
-import java.io._
-import scala.sys.process.{ Process, ProcessIO, ProcessBuilder }
-import play.api.libs.iteratee._
+import java.io.{ InputStream, OutputStream }
+import sys.process.{ Process, ProcessIO, ProcessBuilder }
 import concurrent.{ Promise, Future, ExecutionContext }
+import play.api.libs.iteratee._
 
 /**
  * CLI defines helpers to deal with UNIX command with Play Framework iteratees.
@@ -25,7 +25,6 @@ import concurrent.{ Promise, Future, ExecutionContext }
  */
 object CLI {
 
-  import scala.concurrent.ExecutionContext
   object internal {
     implicit lazy val defaultExecutionContext: ExecutionContext = {
       val playConfig = play.api.Play.maybeApplication.map(_.configuration)
@@ -216,7 +215,7 @@ object CLI {
   private val logger = play.api.Logger("CLI")
 
   private def logStream (stream: InputStream)(loggerF: (=>String)=>Unit) {
-    val br = new java.io.BufferedReader(new InputStreamReader(stream))
+    val br = new java.io.BufferedReader(new java.io.InputStreamReader(stream))
     var read = br.readLine()
     while(read != null) {
       loggerF(read)
