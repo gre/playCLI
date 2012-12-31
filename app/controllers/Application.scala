@@ -15,6 +15,12 @@ import java.io._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
+/**
+ * Example dependencies:
+ * curl
+ * ffmpeg
+ * sox
+ */
 object Application extends Controller {
 
   // Pipe examples
@@ -22,7 +28,7 @@ object Application extends Controller {
   val addEchoToOgg = CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
   val scaleVideoHalf = CLI.pipe("ffmpeg -v warning -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")
 
-  // Consume an stream with url and push it in a socket with f
+  // Consume a stream with url and push it in a socket with f
   def proxy[A] (url: String)(f: Socket.Out[Array[Byte]] => Iteratee[Array[Byte], A]): Iteratee[Array[Byte], Unit] => Unit = 
     (socket: Socket.Out[Array[Byte]]) => WS.url(url).withTimeout(-1).get(headers => f(socket))
 
@@ -63,7 +69,7 @@ object Application extends Controller {
     val addEchoToLocalOgg = CLI.consume(Process("sox -t ogg - -t ogg - echo 0.5 0.7 60 1") #> file)(_)
     AsyncResult {
       addEchoToLocalOgg(enum) map { _ =>
-        Ok("'"+file.getAbsolutePath+"' file has been generated.")
+        Ok("'"+file.getAbsolutePath+"' file has been generated.\n")
       }
     }
   }

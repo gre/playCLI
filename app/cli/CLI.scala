@@ -44,18 +44,22 @@ object CLI {
 
           val done = Promise[Unit]() // fulfilled when either done consuming / either done enumerating
 
-          val iteratee = consumer mapDone { r => done.trySuccess(()); r }
-
-          // When done, close everything
+          // When done, close inputs and terminate the process
           done.future onComplete { _ =>
             stdin map (_.close())
             stderr map (_.close())
-            closeProcess(process, command.toString)
+            terminateProcess(process, command.toString)
+          }
+
+          // when consumer has done, trigger done
+          val iteratee = consumer mapDone { r =>
+            done.trySuccess(())
+            r 
           }
 
           stdout flatMap { stdout => 
-            Enumerator.fromStream(stdout, chunkSize)
-              .onDoneEnumerating { () => done.trySuccess(()) }
+            Enumerator.fromStream(stdout, chunkSize) // fromStream will .close() stdout
+              .onDoneEnumerating { () => done.trySuccess(()) } // when done enumerating, trigger done
               .apply(iteratee)
           }
         } getOrElse(Future.successful(Error("CLI failed", Input.Empty)))
@@ -104,10 +108,10 @@ object CLI {
               // When reading/writing is finished, terminate the process
               (doneReading.future zip doneWriting.future) onComplete { _ =>
                 stderr map (_.close())
-                closeProcess(process, command.toString)
+                terminateProcess(process, command.toString)
               }
 
-              // When the consumer has finished, stop everything
+              // When consumer has done, trigger done for reading and writing
               val iteratee = Ref(consumer mapDone { r =>
                 doneReading.trySuccess(())
                 doneWriting.trySuccess(())
@@ -189,7 +193,7 @@ object CLI {
             stdin.close()
             stdout map (_.close())
             stderr map (_.close())
-            closeProcess(process, command.toString)
+            terminateProcess(process, command.toString)
           }
         }
       } getOrElse(Future.successful(Error("CLI failed", Input.Empty)))
@@ -231,7 +235,7 @@ object CLI {
     }
   }
 
-  private def closeProcess (process: Process, commandName: String): Int = {
+  private def terminateProcess (process: Process, commandName: String): Int = {
     val code = process.exitValue()
     logger.debug("exit("+code+") for command "+commandName)
     process.destroy()
