@@ -25,7 +25,7 @@ import play.api.libs.iteratee._
  */
 object CLI {
 
-  object internal {
+  private[cli] object internal {
     implicit lazy val defaultExecutionContext: ExecutionContext = {
       val playConfig = play.api.Play.maybeApplication.map(_.configuration)
       val nb = playConfig.flatMap(_.getInt("CLI.threadpool.size")).getOrElse(50)
@@ -135,11 +135,13 @@ object CLI {
                   val buffer = new Array[Byte](chunkSize)
                   stdout.read(buffer) match {
                     case -1 => 
+                      logger.trace("reach end of stdout")
                       doneReading.trySuccess(())
                     
                     case read => 
                       val input = new Array[Byte](read)
                       System.arraycopy(buffer, 0, input, 0, read)
+                      logger.trace("read "+read+" bytes")
                       val p = Promise[Iteratee[Array[Byte], A]]()
                       val next = Iteratee.flatten(p.future)
                       val it = iteratee.single.swap(next)
@@ -151,11 +153,13 @@ object CLI {
               // Writing stdin iteratee loop (until EOF)
               def step(): Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = Cont {
                 case Input.El(e) => {
+                  logger.trace("write "+e.length+" bytes")
                   stdin.write(e)
-                  step
+                  step()
                 }
-                case Input.Empty => step
+                case Input.Empty => step()
                 case Input.EOF => {
+                  logger.trace("reach stdin EOF")
                   doneWriting.trySuccess(())
                   Iteratee.flatten {
                     doneReading.future map { _ =>

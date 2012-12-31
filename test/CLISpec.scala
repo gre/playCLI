@@ -4,8 +4,8 @@ import org.specs2.mutable._
 
 import play.api.test._
 import play.api.test.Helpers._
-
 import play.api.libs.iteratee._
+import play.api.libs.concurrent.Promise.timeout
 import cli.CLI
 
 import collection.immutable.StringOps
@@ -26,24 +26,20 @@ class CLITest extends Specification {
   val maxDuration = Duration("1 second")
   val wordsFile = new java.io.File("test/words.txt")
 
+  // Generic items and enum
+  val bigItems = Range(0, 100).map { i => stringToBytes(Range(0, 200).map { _ => "HelloWorld " } mkString) }
+  val bigItemsBytes = bytesJoin(bigItems)
+  val bigEnum = Enumerator.apply(bigItems : _*)
+    
+
   "CLI.pipe" should {
-    
-    "echo should work" in {
-      val enum = Enumerator[Array[Byte]]()
-      val text = "HelloWorld"
-      val pipe = CLI.pipe("echo -n "+text)
-      val result: Array[Byte] = Await.result(enum &> pipe |>>> bytesJoinConsumer, maxDuration)
-      result must equalTo (stringToBytes(text))
-    }
-    
-    "pipe the equivalent with cat" in {
-      val items = List("toto\n", "tata\n", "titi\n").map { str => stringToBytes(str) }
-      val enum = Enumerator.apply(items : _*)
-      val result: Array[Byte] = Await.result(enum &> CLI.pipe("cat") |>>> bytesJoinConsumer, maxDuration)
-      result must equalTo (bytesJoin(items)) updateMessage("successive CLI.pipe result equals items")
+
+    "pipe the equivalent (using cat)" in {
+      val result: Array[Byte] = Await.result(bigEnum &> CLI.pipe("cat") |>>> bytesJoinConsumer, maxDuration)
+      result must equalTo (bigItemsBytes) updateMessage("successive CLI.pipe result equals items")
     }
         
-    "testing with grep" in {
+    "filter input (using grep)" in {
       val enum = Enumerator.fromFile(wordsFile)
       val grepParam = "superman"
       val exceptResult = stringToBytes(
@@ -59,34 +55,56 @@ supermannish
       result must equalTo (exceptResult)
     }
 
-    "pipe the equivalent with multiple cat" in {
-      val items = Range(0, 100).map { i =>
-        stringToBytes(Range(0, 200).map { _ => "HelloWorld " } mkString)
-      }
-      val enum = Enumerator.apply(items : _*)
-      val result: Array[Byte] = Await.result(enum &> CLI.pipe("cat") &> CLI.pipe("cat") &> CLI.pipe("cat") |>>> bytesJoinConsumer, maxDuration)
-      result must equalTo (bytesJoin(items)) updateMessage("CLI.pipe result equals items")
+    "pipe multiple commands (using cat)" in {
+      val result: Array[Byte] = Await.result(bigEnum &> CLI.pipe("cat") &> CLI.pipe("cat") |>>> bytesJoinConsumer, maxDuration)
+      result must equalTo (bigItemsBytes) updateMessage("CLI.pipe result equals items")
     }
 
+    "an Enumeratee instance is stateless (using cat)" in {
+      val cat = CLI.pipe("cat")
+      val chainOfCat = Range(0, 10).foldLeft(bigEnum) { (chain, i) => chain &> cat }
+      val result: Array[Byte] = Await.result(chainOfCat |>>> bytesJoinConsumer, maxDuration)
+      result must equalTo (bigItemsBytes) updateMessage("CLI.pipe result equals items")
+    }
+
+    "should work without any input (using echo)" in {
+      val enum = Enumerator[Array[Byte]]() // Empty enumerator
+      val text = "HelloWorld"
+      val pipe = CLI.pipe("echo -n "+text)
+      val result: Array[Byte] = Await.result(enum &> pipe |>>> bytesJoinConsumer, maxDuration)
+      result must equalTo (stringToBytes(text))
+    }
+    
+    "should stop itself when dealing with infinite stream (using head)" in {
+      val nbOfLines = 3
+      val line = stringToBytes("hello\n")
+      val enum = Enumerator.generateM[Array[Byte]] {
+        timeout(Some(line), 50)
+      }
+      val pipe = CLI.pipe(Seq("head", "-n", nbOfLines.toString), 8)
+      val result: Array[Byte] = Await.result(enum &> pipe |>>> bytesJoinConsumer, maxDuration)
+      result must equalTo (bytesJoin(Range(0, nbOfLines) map { _ => line }))
+    }
+    
   }
 
   "CLI.enumerate" should {
 
-    "echo" in {
+    "generate basic word (using echo)" in {
       val text = "HelloWorld"
       val enum = CLI.enumerate("echo -n "+text)
       val result: Array[Byte] = Await.result(enum |>>> bytesJoinConsumer, maxDuration)
       result must equalTo (stringToBytes(text))
     }
 
-    "cat a file" in {
+    "enumerate a file (using cat)" in {
       val fileContent = Await.result(Enumerator.fromFile(wordsFile) |>>> bytesJoinConsumer, maxDuration)
       val enum = CLI.enumerate(Seq("cat", wordsFile.getAbsolutePath))
       val result: Array[Byte] = Await.result(enum |>>> bytesJoinConsumer, maxDuration)
       result must equalTo (fileContent) updateMessage("CLI.enumerate result equals fileContent")
     }
 
-    "be used a lot without issues" in {
+    "be used a lot without issues (using echo)" in {
       val text = "HelloWorld"
       val results = Range(0, 200) map { _ =>
         val enum = CLI.enumerate("echo -n "+text)
@@ -99,17 +117,12 @@ supermannish
   
   "CLI.consume" should {
 
-    "write some bytes in temporary file" in {
-      val items = Range(0, 10).map { i =>
-        stringToBytes(Range(0, 20).map { _ => "A" } mkString)
-      }
-      val enum = Enumerator(items : _*)
+    "write some bytes in temporary file (using cat)" in {
       val file = File.createTempFile("tmp", ".txt")
-      val result = CLI.consume(Process("cat") #> file)(enum)
-      Await.result(result, maxDuration)
+      val exitCode = Await.result(CLI.consume(Process("cat") #> file)(bigEnum), maxDuration)
       val fileContent = Await.result(Enumerator.fromFile(file) |>>> bytesJoinConsumer, maxDuration)
-      val exceptContent = bytesJoin(items)
-      fileContent must equalTo (exceptContent) updateMessage("fileContent equals enumerator values.")
+      exitCode must equalTo (0)
+      fileContent must equalTo (bigItemsBytes) updateMessage("fileContent equals enumerator values.")
     }
   }
 
