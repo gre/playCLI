@@ -28,9 +28,23 @@ object Application extends Controller {
   val addEchoToOgg = CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
   val scaleVideoHalf = CLI.pipe("ffmpeg -v warning -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")
 
+  // Streams
+  /*
+  val radioStream = proxyBroadcast("http://radio.hbr1.com:19800/ambient.ogg")
+  val (radioStreamWithEcho, _) = Concurrent.broadcast(radioStream &> addEchoToOgg)
+  */
+
   // Consume a stream with url and push it in a socket with f
+  // FIXME, how to tell WS to stop when socket is done?
   def proxy[A] (url: String)(f: Socket.Out[Array[Byte]] => Iteratee[Array[Byte], A]): Iteratee[Array[Byte], Unit] => Unit = 
     (socket: Socket.Out[Array[Byte]]) => WS.url(url).withTimeout(-1).get(headers => f(socket))
+
+  // Proxify a stream forever
+  def proxyBroadcast (url: String) : Enumerator[Array[Byte]] = {
+    val (enumerator, channel) = Concurrent.broadcast[Array[Byte]]
+    WS.url(url).withTimeout(-1).get(headers => Iteratee.foreach[Array[Byte]] { bytes => channel.push(bytes) })
+    enumerator
+  }
 
   def index = Action(Ok(views.html.index()))
 
