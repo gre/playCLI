@@ -12,16 +12,20 @@ import play.api.libs.iteratee._
  *
  * Depending on your needs, you can Enumerate / Pipe / Consume an UNIX command:
  *
- * [[CLI.enumerate]] is a way to create a stream from a command which generate output (it creates an [[play.api.libs.iteratee.Enumerator]])
-
- * [[CLI.pipe]] is a way to pipe a command which consume input and generate output (it creates an [[play.api.libs.iteratee.Enumeratee]])
-
- * [[CLI.consume]] creates a process which consume a stream - useful for side effect commands (it creates an
- * [[play.api.libs.iteratee.Iteratee]])
+ * [[CLI.enumerate]] is a way to create a stream from a command which generates output 
+ * (it creates an [[play.api.libs.iteratee.Enumerator]])
+ *
+ * [[CLI.pipe]] is a way to pipe a command which consumes input and generates output 
+ * (it creates an [[play.api.libs.iteratee.Enumeratee]])
+ *
+ * [[CLI.consume]] creates a process which consumes a stream - useful for side effect commands 
+ * (it creates an [[play.api.libs.iteratee.Iteratee]])
  *
  * ==Note==
- * CLI.enumerate and CLI.pipe API are immutable, in other words, each result can be stored in a val and re-used multiple times. A new process is created for each re-use.
- * a CLI.consume instance should not be used multiple times because it targets side effect command.
+ *
+ * CLI.enumerate and CLI.pipe API are immutable, in other words, each result can be stored 
+ * in a val and re-used multiple times. A new process is created for each re-use.
+ * CLI.consume is mutable should not be used multiple times because it targets side effect command.
  *
  * Every process' `stderr` is logged in the console with a "CLI" logger
  *
@@ -38,10 +42,10 @@ object CLI {
   }
 
   /**
-   * Returns an Enumerator from a command which generate output - nothing is sent to the CLI input.
+   * Returns an Enumerator from a command which generates output - nothing is sent to the CLI input.
    *
    * @param command the UNIX command
-   * @return an [[play.api.libs.iteratee.Enumerator]] from this command which generate output.
+   * @return an [[play.api.libs.iteratee.Enumerator]] from this command which generate output. (immutable)
    *
    * @example {{{
    CLI.enumerate("find .")
@@ -80,11 +84,10 @@ object CLI {
     }
 
   /**
-   * Returns an Enumeratee for piping a command which consume input and generate output.
+   * Returns an Enumeratee for piping a command which consumes input and generates output.
    *
    * @param command the UNIX command
-   * @return an [[play.api.libs.iteratee.Enumeratee]] from the pipe of this command which consume input and generate output.
-
+   * @return an [[play.api.libs.iteratee.Enumeratee]] from the pipe of this command which consumes input and generates output. (immutable)
    *
    * @example {{{
      // Add an echo to an ogg audio stream.
@@ -185,12 +188,12 @@ object CLI {
     }
 
   /**
-   * Returns an Iteratee for piping a command which consume input.
+   * Returns an Iteratee for piping a command which consumes input.
    *
    * This method is useful for side effect commands.
    *
    * @param command the UNIX command
-   * @return an `Iteratee[Array[Byte], Int]` which consume data and returns the exitValue of the command when done.
+   * @return an `Iteratee[Array[Byte], Int]` which consumes data and returns the exitValue of the command when done.
    *
    * @example {{{
      enumerator |>>> CLI.consume("aSideEffectCommand")
@@ -221,6 +224,11 @@ object CLI {
 
   private val logger = play.api.Logger("CLI")
 
+  /**
+   * Logs an InputStream with a logger function.
+   * @param stream the InputStream
+   * @param loggerF the logger function
+   */
   private def logStream (stream: InputStream)(loggerF: (=>String)=>Unit) {
     val br = new java.io.BufferedReader(new java.io.InputStreamReader(stream))
     var read = br.readLine()
@@ -231,7 +239,7 @@ object CLI {
   }
 
   /**
-   * Run a process from a command 
+   * Runs a process from a command.
    * @return a (process, future of stdin, future of stdout, future of stderr)
    */
   private def runProcess (command: ProcessBuilder)(implicit ex: ExecutionContext)
@@ -254,8 +262,14 @@ object CLI {
     }
   }
 
+  /**
+   * Terminates a process and returns the exitValue.
+   * @param process the process
+   * @param commandName the command name
+   * @return the exitValue (integer from the UNIX command)
+   */
   private def terminateProcess (process: Process, commandName: String): Int = {
-    logger.trace("terminating process for command "+commandName)
+    logger.trace("waiting exitValue for command "+commandName)
     val code = process.exitValue()
     logger.debug("exit("+code+") for command "+commandName)
     process.destroy()
