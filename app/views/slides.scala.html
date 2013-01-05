@@ -106,8 +106,8 @@ open <a href="@routes.Application.downloadReEncodeAndStreamVideo().absoluteURL()
 
 <section>
   <h3>Only scalable with <code class="inline">Concurrent.broadcast</code></h3>
-  Play CLI used a thread pool. If the pool size is reach, the next Process creation attempt will fail.<br/>
-  It is sometimes difficult to make a broadcasted stream working: Audio/Video can't easily been played in the middle (you need to implement a chunker for each format).<br />
+  Play CLI use a thread pool. If the pool size is reach, the next Process creation attempt will fail. Using a broadcast will guarantee to not reach such issues.<br/>
+  But it is sometimes difficult to make a broadcasted stream working: Audio/Video can't easily been played in the middle (you need to implement a chunker for each format).<br />
   
   <img src="@routes.Assets.at("images/ogg.png")" alt="" />
 </section>
