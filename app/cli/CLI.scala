@@ -23,9 +23,9 @@ import play.api.libs.iteratee._
  *
  * ==Note==
  *
- * CLI.enumerate and CLI.pipe API are immutable, in other words, each result can be stored 
+ * [[CLI.enumerate]] and [[CLI.pipe]] API are immutable, in other words, each result can be stored 
  * in a val and re-used multiple times. A new process is created for each re-use.
- * CLI.consume is mutable should not be used multiple times because it targets side effect command.
+ * [[CLI.consume]] is mutable should not be used multiple times because it targets side effect command.
  *
  * Every process' `stderr` is logged in the console with a "CLI" logger
  *
