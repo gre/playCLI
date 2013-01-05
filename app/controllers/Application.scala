@@ -1,5 +1,9 @@
 package controllers
 
+import scala.concurrent.ExecutionContext.Implicits.global
+import java.io._
+import sys.process._
+
 import play.api._
 import play.api.mvc._
 
@@ -9,11 +13,8 @@ import play.api.Play.current
 import play.api.libs.ws._
 
 import cli.CLI
+import codecs._
 
-import sys.process._
-import java.io._
-
-import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
  * Example dependencies:
@@ -23,16 +24,21 @@ import scala.concurrent.ExecutionContext.Implicits.global
  */
 object Application extends Controller {
 
+  val bytesFlattener = Enumeratee.mapFlatten[Array[Byte]]( bytes => Enumerator.apply(bytes : _*) ) 
+
   // Pipe examples
   val grep = (q: String) => CLI.pipe(Seq("grep", q), 64)
   val addEchoToOgg = CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
   val scaleVideoHalf = CLI.pipe("ffmpeg -v warning -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")
 
   // Streams
-  /*
-  val radioStream = proxyBroadcast("http://radio.hbr1.com:19800/ambient.ogg")
-  val (radioStreamWithEcho, _) = Concurrent.broadcast(radioStream &> addEchoToOgg)
-  */
+  //val (radioHeaders, radioStream) = AudioFormats.OggChunker(proxyBroadcast("http://radio.hbr1.com:19800/ambient.ogg") &> bytesFlattener)
+  val (echoRadioHeaders, echoRadioStream) = {
+    val radioStream = proxyUnicast("http://radio.hbr1.com:19800/ambient.ogg")
+    val (headers, chunked) = OggChunker(radioStream &> addEchoToOgg &> bytesFlattener)
+    val (broadcast, _) = Concurrent.broadcast(chunked)
+    (headers, broadcast)
+  }
 
   // Consume a stream with url and push it in a socket with f
   // FIXME, how to tell WS to stop when socket is done?
@@ -45,6 +51,14 @@ object Application extends Controller {
     WS.url(url).withTimeout(-1).get(headers => Iteratee.foreach[Array[Byte]] { bytes => channel.push(bytes) })
     enumerator
   }
+  
+  // Proxify a stream forever
+  def proxyUnicast (url: String) : Enumerator[Array[Byte]] = {
+    Concurrent.unicast[Array[Byte]] { channel =>
+      WS.url(url).withTimeout(-1).get(headers => Iteratee.foreach[Array[Byte]] { bytes => channel.push(bytes) })
+    }
+  }
+
 
   def index = Action(Ok(views.html.index()))
 
@@ -58,7 +72,7 @@ object Application extends Controller {
   // Re-stream a web radio by adding echo with sox
   def webRadioWithEcho = Action {
     val src = "http://radio.hbr1.com:19800/ambient.ogg"
-    Ok.stream(proxy(src)(addEchoToOgg &> _))
+    Ok.stream(echoRadioHeaders >>> echoRadioStream)
       .withHeaders(CONTENT_TYPE -> "audio/ogg")
   }
 

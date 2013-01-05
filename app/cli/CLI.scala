@@ -19,6 +19,9 @@ import play.api.libs.iteratee._
  * [[CLI.consume]] creates a process which consume a stream - useful for side effect commands (it takes an [[play.api.libs.iteratee.Enumerator]])
  *
  * ==Note==
+ * The 3 CLI.* API are immutable, in other words, each result can be stored in a val and re-used multiple times. 
+ * A new process is created for each re-use.
+ *
  * Every process' `stderr` is logged in the console with a "CLI" logger
  *
  * @version 0.1
