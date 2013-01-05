@@ -94,9 +94,9 @@ object Application extends Controller {
   def audioEchoEffectGenerate = Action {
     val file = File.createTempFile("sample_with_echo_", ".ogg") // handle myself the output
     val enum = Enumerator.fromFile(Play.getFile("conf/exemple.ogg"))
-    val addEchoToLocalOgg = CLI.consume(Process("sox -t ogg - -t ogg - echo 0.5 0.7 60 1") #> file)(_)
+    val addEchoToLocalOgg = CLI.consume(Process("sox -t ogg - -t ogg - echo 0.5 0.7 60 1") #> file)
     AsyncResult {
-      addEchoToLocalOgg(enum) map { _ =>
+      enum |>>> addEchoToLocalOgg map { _ =>
         Ok("'"+file.getAbsolutePath+"' file has been generated.\n")
       }
     }

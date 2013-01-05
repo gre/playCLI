@@ -18,7 +18,7 @@ import scala.sys.process.Process
 
 import java.io.File
 
-class CLITest extends Specification {
+class CLISpec extends Specification {
 
   val stringToBytes = (str: StringOps) => str.map(_.toByte).toArray
   val bytesJoinConsumer = Iteratee.fold[Array[Byte], Array[Byte]](Array[Byte]())((a, b) => a++b)
@@ -104,10 +104,10 @@ supermannish
       result must equalTo (fileContent) updateMessage("CLI.enumerate result equals fileContent")
     }
 
-    "be used a lot without issues (using echo)" in {
+    "be immutable and used a lot without issues (using echo)" in {
       val text = "HelloWorld"
+      val enum = CLI.enumerate("echo -n "+text)
       val results = Range(0, 200) map { _ =>
-        val enum = CLI.enumerate("echo -n "+text)
         enum |>>> bytesJoinConsumer
       }
       for ( r <- results)
@@ -117,9 +117,21 @@ supermannish
   
   "CLI.consume" should {
 
+    "mix with CLI.enumerate and CLI.pipe (using echo, wc, cat)" in {
+      val file = File.createTempFile("tmp", ".txt")
+      val value = List.fill(10)("foo").flatten.mkString
+      val echoValue = CLI.enumerate(Seq("echo", "-n", value), 1)
+      val wcBytes = CLI.pipe("wc -c")
+      val writeInFile = CLI.consume(Process("cat") #> file)
+      val exitCode = Await.result(echoValue &> wcBytes |>>> writeInFile, maxDuration)
+      val fileContent = Await.result(Enumerator.fromFile(file) |>>> bytesJoinConsumer, maxDuration)
+      exitCode must equalTo (0)
+      fileContent must equalTo (stringToBytes(value.length+"\n")) updateMessage("fileContent equals enumerator values.")
+    }
+
     "write some bytes in temporary file (using cat)" in {
       val file = File.createTempFile("tmp", ".txt")
-      val exitCode = Await.result(CLI.consume(Process("cat") #> file)(bigEnum), maxDuration)
+      val exitCode = Await.result(bigEnum |>>> CLI.consume(Process("cat") #> file), maxDuration)
       val fileContent = Await.result(Enumerator.fromFile(file) |>>> bytesJoinConsumer, maxDuration)
       exitCode must equalTo (0)
       fileContent must equalTo (bigItemsBytes) updateMessage("fileContent equals enumerator values.")

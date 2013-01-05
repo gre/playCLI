@@ -16,11 +16,12 @@ import play.api.libs.iteratee._
 
  * [[CLI.pipe]] is a way to pipe a command which consume input and generate output (it creates an [[play.api.libs.iteratee.Enumeratee]])
 
- * [[CLI.consume]] creates a process which consume a stream - useful for side effect commands (it takes an [[play.api.libs.iteratee.Enumerator]])
+ * [[CLI.consume]] creates a process which consume a stream - useful for side effect commands (it creates an
+ * [[play.api.libs.iteratee.Iteratee]])
  *
  * ==Note==
- * The 3 CLI.* API are immutable, in other words, each result can be stored in a val and re-used multiple times. 
- * A new process is created for each re-use.
+ * CLI.enumerate and CLI.pipe API are immutable, in other words, each result can be stored in a val and re-used multiple times. A new process is created for each re-use.
+ * a CLI.consume instance should not be used multiple times because it targets side effect command.
  *
  * Every process' `stderr` is logged in the console with a "CLI" logger
  *
@@ -74,7 +75,7 @@ object CLI {
               .onDoneEnumerating { () => done.trySuccess(()) } // when done enumerating, trigger done
               .apply(iteratee)
           }
-        } getOrElse(Future.successful(Error("CLI failed", Input.Empty)))
+        } getOrElse(Future.successful(Error("CLI failed "+command, Input.Empty)))
       }
     }
 
@@ -179,25 +180,24 @@ object CLI {
               }
             }
           }
-        } getOrElse(Done(Error("CLI failed", Input.EOF), Input.EOF)) // FIXME: am I doing something wrong?
+        } getOrElse(Done(Error("CLI failed "+command, Input.EOF), Input.EOF)) // FIXME: am I doing something wrong?
       }
     }
 
   /**
-   * Consumes an Enumerator with a command - the CLI output is logged.
+   * Returns an Iteratee for piping a command which consume input.
    *
    * This method is useful for side effect commands.
    *
    * @param command the UNIX command
-   * @param enumerator the enumerator producing data consumed by this command
-   * @return a `Future[Int]` completed when the consuming has finished. The Future value contains the command code value.
+   * @return an `Iteratee[Array[Byte], Int]` which consume data and returns the exitValue of the command when done.
    *
    * @example {{{
-     CLI.consume("aSideEffectCommand")(anEnumerator)
+     enumerator |>>> CLI.consume("aSideEffectCommand")
    * }}}
    */
-  def consume (command: ProcessBuilder)(enumerator: Enumerator[Array[Byte]]) =
-    enumerator |>>> Iteratee.flatten[Array[Byte], Int] {
+  def consume (command: ProcessBuilder): Iteratee[Array[Byte], Int] =
+    Iteratee.flatten[Array[Byte], Int] {
       import internal.defaultExecutionContext
       runProcess(command) map { case (process, stdin, stdout, stderr) =>
         logger.debug("consume "+command)
@@ -215,7 +215,7 @@ object CLI {
             terminateProcess(process, command.toString)
           }
         }
-      } getOrElse(Future.successful(Error("CLI failed", Input.Empty)))
+      } getOrElse(Future.successful(Error("CLI failed "+command, Input.Empty)))
     }
 
 
