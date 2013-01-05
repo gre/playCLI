@@ -61,6 +61,7 @@ object Application extends Controller {
 
 
   def index = Action(Ok(views.html.index()))
+  def slides = Action(implicit r => Ok(views.html.slides(true)))
 
   // grep words
   def grepDictionary(search: String) = Action {

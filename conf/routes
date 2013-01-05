@@ -4,6 +4,7 @@
 
 # Home page
 GET     /                           controllers.Application.index
+GET     /slides                     controllers.Application.slides
 
 GET     /grep                       controllers.Application.grepDictionary(search: String)
 

@@ -51,7 +51,7 @@ object CLI {
    CLI.enumerate("find .")
    * }}}
    */
-  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024 * 8) =
+  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024*8): Enumerator[Array[Byte]] =
     new Enumerator[Array[Byte]] {
       def apply[A](consumer: Iteratee[Array[Byte], A]) = {
         import internal.defaultExecutionContext
@@ -94,7 +94,7 @@ object CLI {
      oggStream &> CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
    * }}}
    */
-  def pipe (command: ProcessBuilder, chunkSize: Int = 1024 * 8) =
+  def pipe (command: ProcessBuilder, chunkSize: Int = 1024*8): Enumeratee[Array[Byte], Array[Byte]] =
     new Enumeratee[Array[Byte], Array[Byte]] { 
       def applyOn[A](consumer: Iteratee[Array[Byte], A]) = {
         import internal.defaultExecutionContext
