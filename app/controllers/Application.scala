@@ -21,6 +21,7 @@ import codecs._
  * curl
  * ffmpeg
  * sox
+ * convert (imagemagick)
  */
 object Application extends Controller {
 
@@ -30,6 +31,7 @@ object Application extends Controller {
   val grep = (q: String) => CLI.pipe(Seq("grep", q), 64)
   val addEchoToOgg = CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
   val scaleVideoHalf = CLI.pipe("ffmpeg -v warning -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1")
+  val convert64colors = CLI.pipe("convert - -colors 64 png:-")
 
   // Streams
   //val (radioHeaders, radioStream) = AudioFormats.OggChunker(proxyBroadcast("http://radio.hbr1.com:19800/ambient.ogg") &> bytesFlattener)
@@ -101,6 +103,12 @@ object Application extends Controller {
         Ok("'"+file.getAbsolutePath+"' file has been generated.\n")
       }
     }
+  }
+
+  // Colors quantization example
+  def colorsQuantization (url: String) = Action {
+    Ok.stream(proxy(url)(convert64colors &> _))
+      .withHeaders(CONTENT_TYPE -> "image/png")
   }
 
   // List all files in this Play project

@@ -7,6 +7,7 @@ GET     /                           controllers.Application.index
 GET     /slides                     controllers.Application.slides
 
 GET     /grep                       controllers.Application.grepDictionary(search: String)
+GET     /colors                     controllers.Application.colorsQuantization(url: String)
 
 GET     /find                       controllers.Application.find
 GET     /curl                       controllers.Application.curl
