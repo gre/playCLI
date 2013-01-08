@@ -36,7 +36,7 @@ object CLI {
   private[cli] object internal {
     implicit lazy val defaultExecutionContext: ExecutionContext = {
       val playConfig = play.api.Play.maybeApplication.map(_.configuration)
-      val nb = playConfig.flatMap(_.getInt("CLI.threadpool.size")).getOrElse(50)
+      val nb = playConfig.flatMap(_.getInt("CLI.threadpool.size")).getOrElse(80)
       ExecutionContext.fromExecutorService(java.util.concurrent.Executors.newFixedThreadPool(nb))
     }
   }
@@ -55,31 +55,30 @@ object CLI {
     new Enumerator[Array[Byte]] {
       def apply[A](consumer: Iteratee[Array[Byte], A]) = {
         import internal.defaultExecutionContext
-        runProcess(command) map { case (process, stdin, stdout, stderr) =>
-          logger.debug("enumerate "+command)
-          stderr.map(logStream(_)(logger.warn))
+        val (process, stdin, stdout, stderr) = runProcess(command) 
+        logger.debug("enumerate "+command)
+        stderr.map(logStream(_)(logger.warn))
 
-          val done = Promise[Unit]() // fulfilled when either done consuming / either done enumerating
+        val done = Promise[Unit]() // fulfilled when either done consuming / either done enumerating
 
-          // When done, close inputs and terminate the process
-          done.future onComplete { _ =>
-            stdin map (_.close())
-            stderr map (_.close())
-            terminateProcess(process, command.toString)
-          }
+        // When done, close inputs and terminate the process
+        done.future onComplete { _ =>
+          stdin map (_.close())
+          stderr map (_.close())
+          terminateProcess(process, command.toString)
+        }
 
-          // when consumer has done, trigger done
-          val iteratee = consumer mapDone { r =>
-            done.trySuccess(())
-            r 
-          }
+        // when consumer has done, trigger done
+        val iteratee = consumer mapDone { r =>
+          done.trySuccess(())
+          r 
+        }
 
-          stdout flatMap { stdout => 
-            Enumerator.fromStream(stdout, chunkSize) // fromStream will .close() stdout
-              .onDoneEnumerating { () => done.trySuccess(()) } // when done enumerating, trigger done
-              .apply(iteratee)
-          }
-        } getOrElse(Future.successful(Error("CLI failed "+command, Input.Empty)))
+        stdout flatMap { stdout => 
+          Enumerator.fromStream(stdout, chunkSize) // fromStream will .close() stdout
+            .onDoneEnumerating { () => done.trySuccess(()) } // when done enumerating, trigger done
+            .apply(iteratee)
+        }
       }
     }
 
@@ -98,102 +97,101 @@ object CLI {
     new Enumeratee[Array[Byte], Array[Byte]] { 
       def applyOn[A](consumer: Iteratee[Array[Byte], A]) = {
         import internal.defaultExecutionContext
-        runProcess(command) map { case (process, stdin, stdout, stderr) =>
-          logger.debug("pipe "+command)
+        val (process, stdin, stdout, stderr) = runProcess(command)
+        logger.debug("pipe "+command)
 
-          stderr.map(logStream(_)(logger.warn))
+        stderr.map(logStream(_)(logger.warn))
 
-          Iteratee.flatten {
-            (stdin zip stdout).map { case (stdin, stdout) =>
-              import scala.concurrent.stm._
+        Iteratee.flatten {
+          (stdin zip stdout).map { case (stdin, stdout) =>
+            import scala.concurrent.stm._
 
-              val doneReading = Promise[Unit]()
-              val doneWriting = Promise[Unit]()
+            val doneReading = Promise[Unit]()
+            val doneWriting = Promise[Unit]()
 
-              // When finished to read, close stdout
-              doneReading.future onComplete { _ =>
-                logger.trace("finished to read stdout for "+command)
-                stdout.close()
-              }
+            // When finished to read, close stdout
+            doneReading.future onComplete { _ =>
+              logger.trace("finished to read stdout for "+command)
+              stdout.close()
+            }
 
-              // When finished to write, close stdin
-              doneWriting.future onComplete { _ =>
-                logger.trace("finished to write stdin for "+command)
-                stdin.close()
-              }
+            // When finished to write, close stdin
+            doneWriting.future onComplete { _ =>
+              logger.trace("finished to write stdin for "+command)
+              stdin.close()
+            }
 
-              // When reading/writing is finished, terminate the process
-              (doneReading.future zip doneWriting.future) onComplete { _ =>
-                stderr map (_.close())
-                terminateProcess(process, command.toString)
-              }
+            // When reading/writing is finished, terminate the process
+            (doneReading.future zip doneWriting.future) onComplete { _ =>
+              stderr map (_.close())
+              terminateProcess(process, command.toString)
+            }
 
-              // When consumer has done, trigger done for reading and writing
-              val iteratee = Ref(consumer mapDone { r =>
-                logger.trace("consumer has done for "+command)
-                doneReading.trySuccess(())
-                doneWriting.trySuccess(())
-                r
-              })
+            // When consumer has done, trigger done for reading and writing
+            val iteratee = Ref(consumer mapDone { r =>
+              logger.trace("consumer has done for "+command)
+              doneReading.trySuccess(())
+              doneWriting.trySuccess(())
+              r
+            })
 
-              // Reading stdout and accumulating iteratee
-              Future {
-                while (!doneReading.future.isCompleted) {
-                  val buffer = new Array[Byte](chunkSize)
-                  stdout.read(buffer) match {
-                    case -1 => 
-                      logger.trace("reach end of stdout")
-                      doneReading.trySuccess(())
-                    
-                    case read => 
-                      val input = new Array[Byte](read)
-                      System.arraycopy(buffer, 0, input, 0, read)
-                      logger.trace("read "+read+" bytes")
-                      val p = Promise[Iteratee[Array[Byte], A]]()
-                      val next = Iteratee.flatten(p.future)
-                      val it = iteratee.single.swap(next)
-                      p.success(Iteratee.flatten(it.feed(Input.El(input))))
-                  }
+            // Reading stdout and accumulating iteratee
+            Future {
+              while (!doneReading.future.isCompleted) {
+                val buffer = new Array[Byte](chunkSize)
+                stdout.read(buffer) match {
+                  case -1 => 
+                    logger.trace("reach end of stdout")
+                    doneReading.trySuccess(())
+                  
+                  case read => 
+                    val input = new Array[Byte](read)
+                    System.arraycopy(buffer, 0, input, 0, read)
+                    logger.trace("read "+read+" bytes")
+                    val p = Promise[Iteratee[Array[Byte], A]]()
+                    val next = Iteratee.flatten(p.future)
+                    val it = iteratee.single.swap(next)
+                    p.success(Iteratee.flatten(it.feed(Input.El(input))))
                 }
               }
+            }
 
-              def stepDone() = {
-                doneWriting.trySuccess(())
-                Iteratee.flatten[Array[Byte], Iteratee[Array[Byte],A]] {
-                  doneReading.future map { _ =>
-                    Done(iteratee.single.get, Input.EOF)
-                  }
+            def stepDone() = {
+              doneWriting.trySuccess(())
+              Iteratee.flatten[Array[Byte], Iteratee[Array[Byte],A]] {
+                doneReading.future map { _ =>
+                  Done(iteratee.single.get, Input.EOF)
                 }
               }
+            }
 
-              // Writing stdin iteratee loop (until EOF)
-              def step(): Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = Cont {
-                case Input.El(e) => {
-                  logger.trace("write "+e.length+" bytes")
-                  stdin.write(e)
-                  // flush() will throw an exception once the process has terminated
-                  val available = try { stdin.flush(); true } catch { case _: java.io.IOException => false }
-                  if (available) step()
-                  else {
-                    logger.trace("stdin is no more writable (flush failed).")
-                    stepDone()
-                  }
-                }
-                case Input.Empty => step()
-                case Input.EOF => {
-                  logger.trace("reach stdin EOF")
+            // Writing stdin iteratee loop (until EOF)
+            def step(): Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = Cont {
+              case Input.El(e) => {
+                logger.trace("write "+e.length+" bytes")
+                stdin.write(e)
+                // flush() will throw an exception once the process has terminated
+                val available = try { stdin.flush(); true } catch { case _: java.io.IOException => false }
+                if (available) step()
+                else {
+                  logger.trace("stdin is no more writable (flush failed).")
                   stepDone()
                 }
               }
-              val result = step()
-
-              // Finish with EOF
-              result mapDone { it =>
-                Iteratee.flatten(it.feed(Input.EOF))
+              case Input.Empty => step()
+              case Input.EOF => {
+                logger.trace("reach stdin EOF")
+                stepDone()
               }
             }
+            val result = step()
+
+            // Finish with EOF
+            result mapDone { it =>
+              Iteratee.flatten(it.feed(Input.EOF))
+            }
           }
-        } getOrElse(Done(Error("CLI failed "+command, Input.EOF), Input.EOF)) // FIXME: am I doing something wrong?
+        }
       }
     }
 
@@ -212,23 +210,22 @@ object CLI {
   def consume (command: ProcessBuilder): Iteratee[Array[Byte], Int] =
     Iteratee.flatten[Array[Byte], Int] {
       import internal.defaultExecutionContext
-      runProcess(command) map { case (process, stdin, stdout, stderr) =>
-        logger.debug("consume "+command)
+      val (process, stdin, stdout, stderr) = runProcess(command)
+      logger.debug("consume "+command)
 
-        stdout.map(logStream(_)(logger.info))
-        stderr.map(logStream(_)(logger.warn))
+      stdout.map(logStream(_)(logger.info))
+      stderr.map(logStream(_)(logger.warn))
 
-        stdin map { stdin =>
-          Iteratee.foreach[Array[Byte]] { bytes =>
-            stdin.write(bytes)
-          } mapDone { _ =>
-            stdin.close()
-            stdout map (_.close())
-            stderr map (_.close())
-            terminateProcess(process, command.toString)
-          }
+      stdin map { stdin =>
+        Iteratee.foreach[Array[Byte]] { bytes =>
+          stdin.write(bytes)
+        } mapDone { _ =>
+          stdin.close()
+          stdout map (_.close())
+          stderr map (_.close())
+          terminateProcess(process, command.toString)
         }
-      } getOrElse(Future.successful(Error("CLI failed "+command, Input.Empty)))
+      }
     }
 
 
@@ -253,23 +250,16 @@ object CLI {
    * @return a (process, future of stdin, future of stdout, future of stderr)
    */
   private def runProcess (command: ProcessBuilder)(implicit ex: ExecutionContext)
-  : Option[(Process, Future[OutputStream], Future[InputStream], Future[InputStream])] = {
+  : (Process, Future[OutputStream], Future[InputStream], Future[InputStream]) = {
     val promiseStdin = Promise[OutputStream]()
     val promiseStdout = Promise[InputStream]()
     val promiseStderr = Promise[InputStream]()
-    try {
-      val process = command run new ProcessIO(
-        (stdin: OutputStream) => promiseStdin.success(stdin),
-        (stdout: InputStream) => promiseStdout.success(stdout),
-        (stderr: InputStream) => promiseStderr.success(stderr)
-      )
-      Some( (process, promiseStdin.future, promiseStdout.future, promiseStderr.future) )
-    }
-    catch {
-      case e: Throwable =>
-        logger.error("Unable to run "+command+" : "+e.getMessage)
-        None
-    }
+    val process = command run new ProcessIO(
+      (stdin: OutputStream) => promiseStdin.success(stdin),
+      (stdout: InputStream) => promiseStdout.success(stdout),
+      (stderr: InputStream) => promiseStderr.success(stderr)
+    )
+    (process, promiseStdin.future, promiseStdout.future, promiseStderr.future)
   }
 
   /**
