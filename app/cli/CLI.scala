@@ -157,22 +157,32 @@ object CLI {
                 }
               }
 
+              def stepDone() = {
+                doneWriting.trySuccess(())
+                Iteratee.flatten[Array[Byte], Iteratee[Array[Byte],A]] {
+                  doneReading.future map { _ =>
+                    Done(iteratee.single.get, Input.EOF)
+                  }
+                }
+              }
+
               // Writing stdin iteratee loop (until EOF)
               def step(): Iteratee[Array[Byte], Iteratee[Array[Byte], A]] = Cont {
                 case Input.El(e) => {
                   logger.trace("write "+e.length+" bytes")
                   stdin.write(e)
-                  step()
+                  // flush() will throw an exception once the process has terminated
+                  val available = try { stdin.flush(); true } catch { case _: java.io.IOException => false }
+                  if (available) step()
+                  else {
+                    logger.trace("stdin is no more writable (flush failed).")
+                    stepDone()
+                  }
                 }
                 case Input.Empty => step()
                 case Input.EOF => {
                   logger.trace("reach stdin EOF")
-                  doneWriting.trySuccess(())
-                  Iteratee.flatten {
-                    doneReading.future map { _ =>
-                      Done(iteratee.single.get, Input.EOF)
-                    }
-                  }
+                  stepDone()
                 }
               }
               val result = step()
