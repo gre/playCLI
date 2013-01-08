@@ -25,6 +25,7 @@ class CLISpec extends Specification {
   val bytesJoin = (list: Seq[Array[Byte]]) => list.fold(Array[Byte]())((a, b) => a++b)
   val maxDuration = Duration("1 second")
   val wordsFile = new java.io.File("test/words.txt")
+  val bytesToTrimString = (bytes: Array[Byte]) => bytes.map(_.toChar).mkString.trim
 
   // Generic items and enum
   val bigItems = Range(0, 100).map { i => stringToBytes(Range(0, 200).map { _ => "HelloWorld " } mkString) }
@@ -60,7 +61,7 @@ supermannish
       result must equalTo (bigItemsBytes) updateMessage("CLI.pipe result equals items")
     }
 
-    "an Enumeratee instance is stateless (using cat)" in {
+    "an Enumeratee instance is immutable (using cat)" in {
       val cat = CLI.pipe("cat")
       val chainOfCat = Range(0, 10).foldLeft(bigEnum) { (chain, i) => chain &> cat }
       val result: Array[Byte] = Await.result(chainOfCat |>>> bytesJoinConsumer, maxDuration)
@@ -119,14 +120,14 @@ supermannish
 
     "mix with CLI.enumerate and CLI.pipe (using echo, wc, cat)" in {
       val file = File.createTempFile("tmp", ".txt")
-      val value = List.fill(10)("foo").flatten.mkString
+      val value = List.fill(100)("foo\n").flatten.mkString
       val echoValue = CLI.enumerate(Seq("echo", "-n", value), 1)
       val wcBytes = CLI.pipe("wc -c")
       val writeInFile = CLI.consume(Process("cat") #> file)
       val exitCode = Await.result(echoValue &> wcBytes |>>> writeInFile, maxDuration)
       val fileContent = Await.result(Enumerator.fromFile(file) |>>> bytesJoinConsumer, maxDuration)
       exitCode must equalTo (0)
-      fileContent must equalTo (stringToBytes(value.length+"\n")) updateMessage("fileContent equals enumerator values.")
+      bytesToTrimString(fileContent) must equalTo (""+value.length) updateMessage("fileContent equals enumerator values.")
     }
 
     "write some bytes in temporary file (using cat)" in {
