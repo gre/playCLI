@@ -19,12 +19,12 @@ import scala.sys.process.Process
 import java.io.File
 
 class CLISpec extends Specification {
+  val maxDuration = Duration("9 second")
 
   val stringToBytes = (str: StringOps) => str.map(_.toByte).toArray
   val bytesJoinConsumer = Iteratee.fold[Array[Byte], Array[Byte]](Array[Byte]())((a, b) => a++b)
   val bytesJoin = (list: Seq[Array[Byte]]) => list.fold(Array[Byte]())((a, b) => a++b)
   val bytesFlattener = Enumeratee.mapFlatten[Array[Byte]]( bytes => Enumerator.apply(bytes : _*) ) 
-  val maxDuration = Duration("1 second")
   val wordsFile = new java.io.File("test/words.txt")
   val bytesToTrimString = (bytes: Array[Byte]) => bytes.map(_.toChar).mkString.trim
 
