@@ -23,6 +23,7 @@ class CLISpec extends Specification {
   val stringToBytes = (str: StringOps) => str.map(_.toByte).toArray
   val bytesJoinConsumer = Iteratee.fold[Array[Byte], Array[Byte]](Array[Byte]())((a, b) => a++b)
   val bytesJoin = (list: Seq[Array[Byte]]) => list.fold(Array[Byte]())((a, b) => a++b)
+  val bytesFlattener = Enumeratee.mapFlatten[Array[Byte]]( bytes => Enumerator.apply(bytes : _*) ) 
   val maxDuration = Duration("1 second")
   val wordsFile = new java.io.File("test/words.txt")
   val bytesToTrimString = (bytes: Array[Byte]) => bytes.map(_.toChar).mkString.trim
@@ -68,7 +69,7 @@ supermannish
       result must equalTo (bigItemsBytes) updateMessage("CLI.pipe result equals items")
     }
 
-    "should work without any input (using echo)" in {
+    "work without any input (using echo)" in {
       val enum = Enumerator[Array[Byte]]() // Empty enumerator
       val text = "HelloWorld"
       val pipe = CLI.pipe("echo -n "+text)
@@ -76,7 +77,7 @@ supermannish
       result must equalTo (stringToBytes(text))
     }
     
-    "should stop itself when dealing with infinite stream (using head)" in {
+    "stop itself when dealing with infinite stream (using head)" in {
       val nbOfLines = 3
       val line = stringToBytes("hello\n")
       val enum = Enumerator.generateM[Array[Byte]] {
@@ -104,6 +105,29 @@ supermannish
       val result: Array[Byte] = Await.result(enum |>>> bytesJoinConsumer, maxDuration)
       result must equalTo (fileContent) updateMessage("CLI.enumerate result equals fileContent")
     }
+    
+    "enumerate a few bytes from an infinite file stream (using tail)" in {
+      val file = File.createTempFile("tmp", ".txt")
+      var writer = new java.io.FileWriter(file)
+      val tail = CLI.enumerate("tail -f "+file.getAbsolutePath)
+
+      val line = stringToBytes("hello world!\n")
+      val linesToTake = 20
+      val linesToWrite = 100
+      
+      // Write some lines
+      Enumerator.generateM[Array[Byte]] { timeout(Some(line), 50) } &> 
+        Enumeratee.take(linesToWrite) |>>> 
+        Iteratee.foreach[Array[Byte]] { bytes => writer.write(bytes.map(_.toChar)); writer.flush() } map
+        { _ => writer.close() }
+
+      // tail some lines
+      val retrieveSomeLines: Enumerator[Byte] = tail &> bytesFlattener &> Enumeratee.take(line.length*linesToTake)
+      var result = Await.result(retrieveSomeLines |>>> Iteratee.getChunks, maxDuration)
+      val expected = List.fill(linesToTake)(line).flatten
+      result must equalTo (expected) updateMessage("result equals expected value.")
+      writer.close()
+    }
 
     "be immutable and used a lot without issues (using echo)" in {
       val text = "HelloWorld"
@@ -115,7 +139,7 @@ supermannish
         Await.result(r, maxDuration)
     }
   }
-  
+
   "CLI.consume" should {
 
     "mix with CLI.enumerate and CLI.pipe (using echo, wc, cat)" in {
