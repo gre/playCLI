@@ -8,7 +8,7 @@
 
 <section>
     <h1>Play CLI</h1>
-    <footer>by Gaëtan Renaudeau</footer>
+    <footer><a href="http://greweb.fr">by Gaëtan Renaudeau</a></footer>
 </section>
 
 <section>
@@ -40,34 +40,43 @@
   <h3>Enumerate: creates a stream from a command which generates output</h3>
   <code><span class="Statement">def</span> <span class="Identifier">enumerate</span> (cmd:<span class="Type"> ProcessBuilder</span>)
   :<span class="Type"> Enumerator[Array[Byte]]</span></code>
+  <div style="text-align: center">
+    <img style="width: 300px" src="@routes.Assets.at("slides/enumerate.svg")" alt="" />
+  </div>
 </section>
 
 <section>
   <h3>Pipe: pipes a command which consumes input and generates output</h3>
   <code><span class="Statement">def</span> <span class="Identifier">pipe</span> (command:<span class="Type"> ProcessBuilder</span>)
   :<span class="Type"> Enumeratee[Array[Byte], Array[Byte]]</span></code>
+  <div style="text-align: center">
+    <img style="width: 300px" src="@routes.Assets.at("slides/pipe.svg")" alt="" />
+  </div>
 </section>
 
 <section>
   <h3>Consume: creates a process which consumes a stream</h3>
   <code><span class="Statement">def</span> <span class="Identifier">consume</span> (command:<span class="Type"> ProcessBuilder</span>)
   :<span class="Type"> Iteratee[Array[Byte], Int]</span></code>
+  <div style="text-align: center">
+    <img style="width: 300px" src="@routes.Assets.at("slides/consume.svg")" alt="" />
+  </div>
 </section>
 
-<section>
-  <h1>Examples</h1>
-  <footer>
-    All examples can be plugged in <code class="inline">Ok.<span class="scalaMethodCall">stream</span>(...)</code>
-  </footer>
+
+<section style="color: white; background: black">
+  <h1>
+    <img class="showmethecode" src="@routes.Assets.at("slides/showmethecode.jpg")" alt="Examples" />
+  </h1>
 </section>
 
 <section>
   <h3>Find files</h3>
-  <code><span class="Keyword">val</span> <span class="scalaValName">find</span> = CLI.<span class="scalaMethodCall">enumerate</span>(<span class="String">&quot;find .&quot;</span>)</code>
 
   <div class="incremental">
+    <code><span class="Keyword">val</span> <span class="scalaValName">find</span> = CLI.<span class="scalaMethodCall">enumerate</span>(<span class="String">&quot;find .&quot;</span>)</code>
     <code>Ok.<span class="scalaMethodCall">stream</span>(find)</code>
-    <span>Simple but useless...</span>
+    <p>Simple.</p>
   </div>
 
 
@@ -79,37 +88,110 @@ open <a href="@routes.Application.find().absoluteURL()">@routes.Application.find
 </section>
 
 <section>
-  <h3>download and re-encode a stream</h3>
-  <code class="small"><span class="Keyword">val</span> <span class="scalaValName">stream</span> = getStream(<span class="String">&quot;http://.../Sintel.2010.1080p.mkv&quot;</span>)
-<span class="Keyword">val</span> <span class="scalaValName">scaleVideoHalf</span> = CLI.<span class="scalaMethodCall">pipe</span>(<span class="String">&quot;ffmpeg -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1&quot;</span>)
-<span class="Keyword">val</span> <span class="scalaValName">scaledVideo</span> = <strong>stream &amp;&gt; scaleVideoHalf</strong></code>
-
+  <h3>Observe a log file</h3>
   <div class="incremental">
-  <code class="small">Ok.<span class="scalaMethodCall">stream</span>(scaledVideo)
-  .<span class="scalaMethodCall">withHeaders</span>(<span class="Special">CONTENT_TYPE</span> -&gt; <span class="String">&quot;video/avi&quot;</span>)</code>
+    <code><span class="Keyword">val</span> <span class="scalaValName">tail</span> = CLI.<span class="scalaMethodCall">enumerate</span>(<span class="String">&quot;tail -f /var/log/nginx/access.log&quot;</span>)</code>
+    <code><span class="Keyword">val</span> (sharedTail, <span class="Keyword">_</span>) = Concurrent.<span class="scalaMethodCall">broadcast</span>(tail)</code>
+    <code><span class="Keyword">def</span> <span class="Function">stream</span> = <span class="Special">Action</span>(Ok.<span class="scalaMethodCall">stream</span>(sharedTail))</code>
   </div>
 
+</section>
+
+<section>
+  <h3>ImageMagick is your friend</h3>
+  <div class="incremental">
+    <code><span class="Keyword">val</span> <span class="scalaValName">convert64colors</span> = CLI.<span class="scalaMethodCall">pipe</span>(<span class="String">&quot;convert - -colors 64 png:-&quot;</span>)</code>
+    <code>Ok.<span class="scalaMethodCall">stream</span>(Enumerator.<span class="scalaMethodCall">fromFile</span>(<span class="String">&quot;cat.png&quot;</span>) &amp;&gt; convert64colors)</code>
+    <p>Image stream processing: Easy!</p>
+  </div>
+</section>
+
+<section>
+  <h3>Download, process, stream web radios!</h3>
+<div class="incremental">
+<code class="small"><span class="Keyword">val</span> <span class="scalaValName">src</span> = <span class="String">&quot;<a href="http://radio.hbr1.com:19800/ambient.ogg">http://radio.hbr1.com:19800/ambient.ogg</a>&quot;</span>
+<span class="Keyword">val</span> <span class="scalaValName">addEchoToOgg</span> = 
+CLI.<span class="scalaMethodCall">pipe</span>(<span class="String">&quot;sox -t ogg - -t ogg - echo 0.5 0.7 60 1&quot;</span>)</code>
+<code class="small"><span class="Keyword">def</span> <span class="Function">webRadioWithEcho</span> = <span class="Special">Action</span> {
+  Ok.<span class="scalaMethodCall">stream</span>(proxy(src)(addEchoToOgg &amp;&gt; <span class="Keyword">_</span>))
+    .<span class="scalaMethodCall">withHeaders</span>(<span class="Special">CONTENT_TYPE</span> -&gt; <span class="String">&quot;audio/ogg&quot;</span>)
+}</code>
+<p>This works! But let's do better...</p>
+</div>
+</section>
+
+<section>
+  <h3>download, process and re-encode a video</h3>
+  <div class="incremental">
+    <code class="small"><span class="Keyword">val</span> <span class="scalaValName">stream</span>: <span class="Type">Enumerator[Array[Byte]]</span> = getStream(<span class="String">&quot;http://.../Sintel.2010.1080p.mkv&quot;</span>)</code>
+    <code class="small"><span class="Keyword">val</span> <span class="scalaValName">scaleVideoHalf</span> = CLI.<span class="scalaMethodCall">pipe</span>(<span class="String">&quot;ffmpeg -i pipe:0 -vf scale=iw/2:-1 -f avi pipe:1&quot;</span>)</code>
+    <code class="small"><span class="Keyword">val</span> <span class="scalaValName">scaledVideo</span> = <strong>stream &amp;&gt; scaleVideoHalf</strong></code>
+
+  <code class="small">Ok.<span class="scalaMethodCall">stream</span>(scaledVideo)
+  .<span class="scalaMethodCall">withHeaders</span>(<span class="Special">CONTENT_TYPE</span> -&gt; <span class="String">&quot;video/avi&quot;</span>)</code>
+  
+  <footer>CPU 2%... No memory load... Bottleneck is network.</footer>
 @if(examplesAvailable) {
 <footer>
 open <a href="@routes.Application.downloadReEncodeAndStreamVideo().absoluteURL()">@routes.Application.downloadReEncodeAndStreamVideo().absoluteURL()</a>
 </footer>
 }
+  </div>
+
 </section>
 
 <section>
-  <h1>TODO</h1><p>more examples...</p>
+  <h1>. . .</h1>
+  <footer>
+    All examples can be plugged in <code class="inline">Ok.<span class="scalaMethodCall">stream</span>(...)</code>
+  </footer>
+</section>
+
+<section>
+  <h1>I'm sure you have many other examples!</h1>
+  <footer>
+    <a href="http://greweb.fr/playcli/api">http://greweb.fr/playcli/api</a>
+  </footer>
 </section>
 
 <section>
   <h1>Limitations</h1>
+  <ul class="incremental">
+    <li>Scalability</li>
+    <li>Command termination</li>
+    <li>?</li>
+  </ul>
 </section>
 
 <section>
-  <h3>Only scalable with <code class="inline">Concurrent.broadcast</code></h3>
-  Play CLI use a thread pool. If the pool size is reach, the next Process creation attempt will fail. Using a broadcast will guarantee to not reach such issues.<br/>
-  But it is sometimes difficult to make a broadcasted stream working: Audio/Video can't easily been played in the middle (you need to implement a chunker for each format).<br />
-  
-  <img src="@routes.Assets.at("images/ogg.png")" alt="" />
+  <div>
+    <h3>Only scalable with <code class="inline">Concurrent.broadcast</code></h3>
+    Play CLI use a thread pool. If the pool size is reach, the next Process creation attempt will fail. Using a broadcast will guarantee to not reach such issues.
+  </div>
+  <div class="incremental">
+    <div>
+      But it is sometimes difficult to make a broadcasted stream working: Audio/Video can't easily been played in the middle (you need to implement a chunker for each format).<br />
+      <img src="@routes.Assets.at("images/ogg.png")" alt="" />
+    </div>
+  </div>
+</section>
+
+<section>
+  <h3>Termination of commands</h3>
+  <div>
+    A <code class="inline">CLI.pipe("command")</code> is stopped if:
+    <ul class="incremental">
+      <li>The command has normally end</li>
+      <li>stdin and stdout is terminated</li>
+      <li>Iteratee has sent Done = consumer stop to consume (e.g. The user closes the browser).</li>
+    </ul>
+    <footer>Is it enough?</footer>
+  </div>
+</section>
+
+<section>
+  <h1>Questions?</h1>
+  <footer><a href="http://github.com/gre/playCLI">http://github.com/gre/playCLI</a></footer>
 </section>
 
 <link href='http://fonts.googleapis.com/css?family=Oswald' rel='stylesheet'>
@@ -127,6 +209,23 @@ open <a href="@routes.Application.downloadReEncodeAndStreamVideo().absoluteURL()
 .Special { color: #6a5acd; }
 .LineNr { color: #a52a2a; }
 .Identifier { color: #008b8b; }
+
+.showmethecode {
+  -webkit-transform: scale(0) rotate(0deg);
+  -moz-transform: scale(0) rotate(0deg);
+  transform: scale(0) rotate(0deg);
+  -webkit-transition: 0s 1s ease-out;
+  -moz-transition: 0s 1s ease-out;
+  transition: 0s 1s ease-out;
+}
+[aria-selected] .showmethecode {
+  -webkit-transform: scale(2) rotate(1440deg);
+  -moz-transform: scale(2) rotate(1440deg);
+  transform: scale(2) rotate(1440deg);
+  -webkit-transition: 3s .5s;
+  -moz-transition: 3s .5s;
+  transition: 3s .5s;
+}
 
   html, .view body { background-color: black; counter-reset: slideidx; }
   body, .view section { background-color: white; border-radius: 12px }
@@ -168,7 +267,7 @@ open <a href="@routes.Application.downloadReEncodeAndStreamVideo().absoluteURL()
   }
 
   ul {
-      margin: 50px 200px;
+      margin: 50px 80px;
   }
 
   p {
