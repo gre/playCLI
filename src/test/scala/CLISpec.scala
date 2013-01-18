@@ -1,21 +1,19 @@
 package test
 
+import playcli.CLI
+
+import sys.process.Process
+import play.api.libs.iteratee._
 import org.specs2.mutable._
 
-import play.api.test._
-import play.api.test.Helpers._
-import play.api.libs.iteratee._
-import play.api.libs.concurrent.Promise.timeout
-import cli.CLI
+import concurrent.ExecutionContext
+import ExecutionContext.Implicits.global
+import concurrent.{Promise, Future, Await}
+import concurrent.duration.Duration
 
 import collection.immutable.StringOps
 
-import scala.concurrent.ExecutionContext.Implicits.global
-import concurrent.{Future, Await}
-import concurrent.duration.Duration
-
-import scala.sys.process.Process
-
+import java.util.concurrent.{ TimeUnit }
 import java.io.File
 
 class CLISpec extends Specification {
@@ -25,7 +23,7 @@ class CLISpec extends Specification {
   val bytesJoinConsumer = Iteratee.fold[Array[Byte], Array[Byte]](Array[Byte]())((a, b) => a++b)
   val bytesJoin = (list: Seq[Array[Byte]]) => list.fold(Array[Byte]())((a, b) => a++b)
   val bytesFlattener = Enumeratee.mapFlatten[Array[Byte]]( bytes => Enumerator.apply(bytes : _*) ) 
-  val wordsFile = new java.io.File("test/words.txt")
+  val wordsFile = new java.io.File(this.getClass.getClassLoader.getResource("words.txt").getFile())
   val bytesToTrimString = (bytes: Array[Byte]) => bytes.map(_.toChar).mkString.trim
 
   // Generic items and enum
@@ -33,6 +31,12 @@ class CLISpec extends Specification {
   val bigItemsBytes = bytesJoin(bigItems)
   val bigEnum = Enumerator.apply(bigItems : _*)
     
+  private val timer = new java.util.Timer()
+  def timeout[A](message: => A, duration: Long, unit: TimeUnit = TimeUnit.MILLISECONDS)(implicit ec: ExecutionContext): Future[A] = {
+    val p = Promise[A]()
+    timer.schedule(new java.util.TimerTask { def run() { p.completeWith(Future(message)(ec)) } }, unit.toMillis(duration))
+    p.future
+  }
 
   "CLI.pipe" should {
 

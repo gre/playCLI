@@ -1,4 +1,6 @@
-package cli
+package playcli
+
+import org.slf4j.{ LoggerFactory, Logger }
 
 import java.io.{ InputStream, OutputStream }
 import sys.process.{ Process, ProcessIO, ProcessBuilder }
@@ -34,10 +36,10 @@ import play.api.libs.iteratee._
  */
 object CLI {
 
-  private[cli] object internal {
+  private[playcli] object internal {
     implicit lazy val defaultExecutionContext: ExecutionContext = {
-      val playConfig = play.api.Play.maybeApplication.map(_.configuration)
-      val nb = playConfig.flatMap(_.getInt("CLI.threadpool.size")).getOrElse(80)
+      val nb = try { com.typesafe.config.ConfigFactory.load().getInt("CLI.threadpool.size") } 
+             catch { case e: com.typesafe.config.ConfigException.Missing => 100             }
       ExecutionContext.fromExecutorService(java.util.concurrent.Executors.newFixedThreadPool(nb))
     }
   }
@@ -45,9 +47,7 @@ object CLI {
   /**
    * The maximum time to wait after the command has been used but is not ending (when exitValue() has been called).
    */
-  val defaultTerminateTimeout = 
-    play.api.Play.maybeApplication.map(_.configuration).
-    flatMap(_.getMilliseconds("CLI.timeout")).getOrElse(60000L)
+  private val defaultTerminateTimeout = try { com.typesafe.config.ConfigFactory.load().getInt("CLI.timeout") } catch { case e: com.typesafe.config.ConfigException.Missing => 60000   }
 
   /**
    * Returns an Enumerator from a command which generates output - nothing is sent to the CLI input.
@@ -236,8 +236,19 @@ object CLI {
       }
     }
 
+  private case class LazyLogger(logger: org.slf4j.Logger) {
+    def trace(s: => String) { if(logger.isTraceEnabled) logger.trace(s) }
+    def debug(s: => String) { if(logger.isDebugEnabled) logger.debug(s) }
+    def info(s: => String) { if(logger.isInfoEnabled) logger.info(s) }
+    def warn(s: => String) { if(logger.isWarnEnabled) logger.warn(s) }
+    def error(s: => String) { if(logger.isErrorEnabled) logger.error(s) }
+  }
 
-  private val logger = play.api.Logger("CLI")
+  private object LazyLogger {
+    def apply(logger: String) :LazyLogger = LazyLogger(org.slf4j.LoggerFactory.getLogger(logger))
+  }
+
+  private val logger = LazyLogger("CLI")
 
   /**
    * Logs an InputStream with a logger function.
@@ -287,7 +298,7 @@ object CLI {
     }
     catch {
       case e: java.util.concurrent.TimeoutException =>
-        logger.debug("timeout reached", e)
+        logger.debug("timeout reached")
         process.destroy()
         process.exitValue()
     }
