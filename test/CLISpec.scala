@@ -161,6 +161,11 @@ supermannish
       exitCode must equalTo (0)
       fileContent must equalTo (bigItemsBytes) updateMessage("fileContent equals enumerator values.")
     }
+
+    "terminate with EOF" in {
+      val exitCode = Await.result(Enumerator.eof |>>> CLI.consume(Process("sleep 10"), 500), Duration("1 s"))
+      exitCode must not equalTo (0)
+    }
   }
 
 }

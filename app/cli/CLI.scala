@@ -2,7 +2,8 @@ package cli
 
 import java.io.{ InputStream, OutputStream }
 import sys.process.{ Process, ProcessIO, ProcessBuilder }
-import concurrent.{ Promise, Future, ExecutionContext }
+import concurrent.{ Promise, Future, ExecutionContext, Await }
+import concurrent.duration._
 import play.api.libs.iteratee._
 
 /**
@@ -42,6 +43,13 @@ object CLI {
   }
 
   /**
+   * The maximum time to wait after the command has been used but is not ending (when exitValue() has been called).
+   */
+  val defaultTerminateTimeout = 
+    play.api.Play.maybeApplication.map(_.configuration).
+    flatMap(_.getMilliseconds("CLI.timeout")).getOrElse(60000L)
+
+  /**
    * Returns an Enumerator from a command which generates output - nothing is sent to the CLI input.
    *
    * @param command the UNIX command
@@ -51,7 +59,7 @@ object CLI {
    CLI.enumerate("find .")
    * }}}
    */
-  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024*8): Enumerator[Array[Byte]] =
+  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024*8, timeoutInMs: Long = defaultTerminateTimeout): Enumerator[Array[Byte]] =
     new Enumerator[Array[Byte]] {
       def apply[A](consumer: Iteratee[Array[Byte], A]) = {
         import internal.defaultExecutionContext
@@ -65,7 +73,7 @@ object CLI {
         done.future onComplete { _ =>
           stdin map (_.close())
           stderr map (_.close())
-          terminateProcess(process, command.toString)
+          terminateProcess(process, command.toString, timeoutInMs)
         }
 
         // when consumer has done, trigger done
@@ -93,7 +101,7 @@ object CLI {
      oggStream &> CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
    * }}}
    */
-  def pipe (command: ProcessBuilder, chunkSize: Int = 1024*8): Enumeratee[Array[Byte], Array[Byte]] =
+  def pipe (command: ProcessBuilder, chunkSize: Int = 1024*8, timeoutInMs: Long = defaultTerminateTimeout): Enumeratee[Array[Byte], Array[Byte]] =
     new Enumeratee[Array[Byte], Array[Byte]] { 
       def applyOn[A](consumer: Iteratee[Array[Byte], A]) = {
         import internal.defaultExecutionContext
@@ -124,7 +132,7 @@ object CLI {
             // When reading/writing is finished, terminate the process
             (doneReading.future zip doneWriting.future) onComplete { _ =>
               stderr map (_.close())
-              terminateProcess(process, command.toString)
+              terminateProcess(process, command.toString, timeoutInMs)
             }
 
             // When consumer has done, trigger done for reading and writing
@@ -207,7 +215,7 @@ object CLI {
      enumerator |>>> CLI.consume("aSideEffectCommand")
    * }}}
    */
-  def consume (command: ProcessBuilder): Iteratee[Array[Byte], Int] =
+  def consume (command: ProcessBuilder, timeoutInMs: Long = defaultTerminateTimeout): Iteratee[Array[Byte], Int] =
     Iteratee.flatten[Array[Byte], Int] {
       import internal.defaultExecutionContext
       val (process, stdin, stdout, stderr) = runProcess(command)
@@ -223,7 +231,7 @@ object CLI {
           stdin.close()
           stdout map (_.close())
           stderr map (_.close())
-          terminateProcess(process, command.toString)
+          terminateProcess(process, command.toString, timeoutInMs)
         }
       }
     }
@@ -268,11 +276,23 @@ object CLI {
    * @param commandName the command name
    * @return the exitValue (integer from the UNIX command)
    */
-  private def terminateProcess (process: Process, commandName: String): Int = {
-    logger.trace("waiting exitValue for command "+commandName)
-    val code = process.exitValue()
+  private def terminateProcess (process: Process, commandName: String, timeoutInMs: Long = defaultTerminateTimeout)(implicit ex: ExecutionContext): Int = {
+    val timeout = Duration(timeoutInMs, MILLISECONDS)
+
+    val code = try {
+      Await.result(Future {
+        logger.trace("waiting exitValue for command "+commandName)
+        process.exitValue()
+      }, timeout)
+    }
+    catch {
+      case e: java.util.concurrent.TimeoutException =>
+        logger.debug("timeout reached", e)
+        process.destroy()
+        process.exitValue()
+    }
+
     logger.debug("exit("+code+") for command "+commandName)
-    process.destroy()
     code
   }
 
