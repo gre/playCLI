@@ -18,17 +18,17 @@
 </section>
 
 <section>
-  <h2>scala.sys.Process</h2>
+  <h1>scala.sys.Process</h1>
   <p>Play CLI rely on Process to create commands.</p>
 </section>
 
 <section>
-  <h2>play.api.libs.iteratee</h2>
+  <h1>play.api.libs.iteratee</h1>
   <p>Play CLI is implemented using Iteratee paradigm.</p>
 </section>
 
 <section>
-  <h1>3 use-cases</h1>
+  <h2>3 use-cases</h2>
   <ul>
     <li><code class="inline">CLI.enumerate</code></li>
     <li><code class="inline">CLI.pipe</code></li>
@@ -155,11 +155,11 @@ open <a href="@routes.Application.downloadReEncodeAndStreamVideo().absoluteURL()
 </section>
 
 <section>
-  <h1>Limitations</h1>
+  <h2>Important points</h2>
   <ul class="incremental">
     <li>Scalability</li>
     <li>Command termination</li>
-    <li>?</li>
+    <li>Mutability / Immutability</li>
   </ul>
 </section>
 
@@ -185,8 +185,15 @@ open <a href="@routes.Application.downloadReEncodeAndStreamVideo().absoluteURL()
       <li>stdin and stdout is terminated</li>
       <li>Iteratee has sent Done = consumer stop to consume (e.g. The user closes the browser).</li>
     </ul>
-    <footer>Is it enough?</footer>
+    <footer>
+      When done, wait exitCode or kill it if timeout reached.
+    </footer>
   </div>
+</section>
+
+<section>
+  <h3>Immutability / Mutability</h3>
+  <p>TODO</p>
 </section>
 
 <section>
@@ -257,17 +264,22 @@ open <a href="@routes.Application.downloadReEncodeAndStreamVideo().absoluteURL()
     margin: 1em 0 1em 0;
   }
 
-  h1, h2 {
+  h1 {
     margin-top: 200px;
     text-align: center;
     font-size: 80px;
+  }
+  h2 {
+    margin-top: 60px;
+    text-align: center;
+    font-size: 60px;
   }
   h3 {
     margin: 100px 0 50px 100px;
   }
 
   ul {
-      margin: 50px 80px;
+      margin: 40px 80px;
   }
 
   p {
@@ -327,6 +339,7 @@ open <a href="@routes.Application.downloadReEncodeAndStreamVideo().absoluteURL()
     padding: 40px;
     text-align: right;
     background-color: #F3F4F8;
+    color: #666;
     border-top: 1px solid #CCC;
   }
 
