@@ -48,14 +48,14 @@ object CLI {
    * Returns an Enumerator from a command which generates output - nothing is sent to the CLI input.
    *
    * @param command the UNIX command
-   * @param timeoutInMs the time to wait before the process to terminate when enumerate is done
+   * @param terminateTimeout the time in milliseconds to wait before the process to terminate when enumerate is done
    * @return an [[play.api.libs.iteratee.Enumerator]] from this command which generate output. (immutable)
    *
    * @example {{{
    CLI.enumerate("find .")
    * }}}
    */
-  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024*8, timeoutInMs: Long = defaultTerminateTimeout): Enumerator[Array[Byte]] =
+  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024*8, terminateTimeout: Long = defaultTerminateTimeout): Enumerator[Array[Byte]] =
     new Enumerator[Array[Byte]] {
       def apply[A](consumer: Iteratee[Array[Byte], A]) = {
         import internal.defaultExecutionContext
@@ -69,7 +69,7 @@ object CLI {
         done.future onComplete { _ =>
           stdin map (_.close())
           stderr map (_.close())
-          terminateProcess(process, command.toString, timeoutInMs)
+          terminateProcess(process, command.toString, terminateTimeout)
         }
 
         // when consumer has done, trigger done
@@ -90,7 +90,7 @@ object CLI {
    * Returns an Enumeratee for piping a command which consumes input and generates output.
    *
    * @param command the UNIX command
-   * @param timeoutInMs the time to wait before the process to terminate when pipe is done
+   * @param terminateTimeout the time in milliseconds to wait before the process to terminate when pipe is done
    * @return an [[play.api.libs.iteratee.Enumeratee]] from the pipe of this command which consumes input and generates output. (immutable)
    *
    * @example {{{
@@ -98,7 +98,7 @@ object CLI {
      oggStream &> CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
    * }}}
    */
-  def pipe (command: ProcessBuilder, chunkSize: Int = 1024*8, timeoutInMs: Long = defaultTerminateTimeout): Enumeratee[Array[Byte], Array[Byte]] =
+  def pipe (command: ProcessBuilder, chunkSize: Int = 1024*8, terminateTimeout: Long = defaultTerminateTimeout): Enumeratee[Array[Byte], Array[Byte]] =
     new Enumeratee[Array[Byte], Array[Byte]] { 
       def applyOn[A](consumer: Iteratee[Array[Byte], A]) = {
         import internal.defaultExecutionContext
@@ -129,7 +129,7 @@ object CLI {
             // When reading/writing is finished, terminate the process
             (doneReading.future zip doneWriting.future) onComplete { _ =>
               stderr map (_.close())
-              terminateProcess(process, command.toString, timeoutInMs)
+              terminateProcess(process, command.toString, terminateTimeout)
             }
 
             // When consumer has done, trigger done for reading and writing
@@ -206,14 +206,14 @@ object CLI {
    * This method is useful for side effect commands.
    *
    * @param command the UNIX command
-   * @param timeoutInMs the time to wait before the process to terminate when consume is done
+   * @param terminateTimeout the time in milliseconds to wait before the process to terminate when consume is done
    * @return an `Iteratee[Array[Byte], Int]` which consumes data and returns the exitValue of the command when done.
    *
    * @example {{{
      enumerator |>>> CLI.consume("aSideEffectCommand")
    * }}}
    */
-  def consume (command: ProcessBuilder, timeoutInMs: Long = defaultTerminateTimeout): Iteratee[Array[Byte], Int] =
+  def consume (command: ProcessBuilder, terminateTimeout: Long = defaultTerminateTimeout): Iteratee[Array[Byte], Int] =
     Iteratee.flatten[Array[Byte], Int] {
       import internal.defaultExecutionContext
       val (process, stdin, stdout, stderr) = runProcess(command)
@@ -229,7 +229,7 @@ object CLI {
           stdin.close()
           stdout map (_.close())
           stderr map (_.close())
-          terminateProcess(process, command.toString, timeoutInMs)
+          terminateProcess(process, command.toString, terminateTimeout)
         }
       }
     }
@@ -283,11 +283,11 @@ object CLI {
    * Terminates a process and returns the exitValue.
    * @param process the process
    * @param commandName the command name
-   * @param timeoutInMs the time to wait before the process to terminate
+   * @param terminateTimeout the time in milliseconds to wait before the process to terminate
    * @return the exitValue (integer from the UNIX command)
    */
-  private def terminateProcess (process: Process, commandName: String, timeoutInMs: Long = defaultTerminateTimeout)(implicit ex: ExecutionContext): Int = {
-    val timeout = Duration(timeoutInMs, MILLISECONDS)
+  private def terminateProcess (process: Process, commandName: String, terminateTimeout: Long = defaultTerminateTimeout)(implicit ex: ExecutionContext): Int = {
+    val timeout = Duration(terminateTimeout, MILLISECONDS)
 
     val code = try {
       Await.result(Future {
