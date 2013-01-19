@@ -53,6 +53,7 @@ object CLI {
    * Returns an Enumerator from a command which generates output - nothing is sent to the CLI input.
    *
    * @param command the UNIX command
+   * @param timeoutInMs the time to wait before the process to terminate when enumerate is done
    * @return an [[play.api.libs.iteratee.Enumerator]] from this command which generate output. (immutable)
    *
    * @example {{{
@@ -94,6 +95,7 @@ object CLI {
    * Returns an Enumeratee for piping a command which consumes input and generates output.
    *
    * @param command the UNIX command
+   * @param timeoutInMs the time to wait before the process to terminate when pipe is done
    * @return an [[play.api.libs.iteratee.Enumeratee]] from the pipe of this command which consumes input and generates output. (immutable)
    *
    * @example {{{
@@ -209,6 +211,7 @@ object CLI {
    * This method is useful for side effect commands.
    *
    * @param command the UNIX command
+   * @param timeoutInMs the time to wait before the process to terminate when consume is done
    * @return an `Iteratee[Array[Byte], Int]` which consumes data and returns the exitValue of the command when done.
    *
    * @example {{{
@@ -285,6 +288,7 @@ object CLI {
    * Terminates a process and returns the exitValue.
    * @param process the process
    * @param commandName the command name
+   * @param timeoutInMs the time to wait before the process to terminate
    * @return the exitValue (integer from the UNIX command)
    */
   private def terminateProcess (process: Process, commandName: String, timeoutInMs: Long = defaultTerminateTimeout)(implicit ex: ExecutionContext): Int = {
