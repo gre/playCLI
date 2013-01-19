@@ -39,15 +39,10 @@ object CLI {
   private[playcli] object internal {
     implicit lazy val defaultExecutionContext: ExecutionContext = {
       val nb = try { com.typesafe.config.ConfigFactory.load().getInt("CLI.threadpool.size") } 
-             catch { case e: com.typesafe.config.ConfigException.Missing => 100             }
+             catch { case e: com.typesafe.config.ConfigException.Missing => 100 }
       ExecutionContext.fromExecutorService(java.util.concurrent.Executors.newFixedThreadPool(nb))
     }
   }
-
-  /**
-   * The maximum time to wait after the command has been used but is not ending (when exitValue() has been called).
-   */
-  private val defaultTerminateTimeout = try { com.typesafe.config.ConfigFactory.load().getInt("CLI.timeout") } catch { case e: com.typesafe.config.ConfigException.Missing => 60000   }
 
   /**
    * Returns an Enumerator from a command which generates output - nothing is sent to the CLI input.
@@ -247,11 +242,7 @@ object CLI {
     def error(s: => String) { if(logger.isErrorEnabled) logger.error(s) }
   }
 
-  private object LazyLogger {
-    def apply(logger: String) :LazyLogger = LazyLogger(org.slf4j.LoggerFactory.getLogger(logger))
-  }
-
-  private val logger = LazyLogger("CLI")
+  private val logger = LazyLogger(LoggerFactory.getLogger("CLI"))
 
   /**
    * Logs an InputStream with a logger function.
@@ -283,6 +274,10 @@ object CLI {
     )
     (process, promiseStdin.future, promiseStdout.future, promiseStderr.future)
   }
+
+  private val defaultTerminateTimeout = 
+      try { com.typesafe.config.ConfigFactory.load().getInt("CLI.timeout") }
+    catch { case e: com.typesafe.config.ConfigException.Missing => 60000 }
 
   /**
    * Terminates a process and returns the exitValue.
