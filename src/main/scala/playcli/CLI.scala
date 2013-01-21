@@ -38,9 +38,13 @@ val ffmpeg = CLI.pipe("ffmpeg -i pipe:0 ... pipe:1") // video processing
 val convert = CLI.pipe("convert - -colors 64 png:-") // color quantization
 
 // Some usage examples
-Ok.stream(tail).withHeaders(CONTENT_TYPE -> "text/plain") // Play framework
+val sharedTail = Concurrent.broadcast(tail)
+Ok.stream(sharedTail).withHeaders(CONTENT_TYPE -> "text/plain") // Play framework
+
 val searchResult: Enumerator[String] = dictionaryEnumerator &> grep("able") &> aStringChunker
+
 Ok.stream(Enumerator.fromFile("image.jpg") &> convert).withHeaders(CONTENT_TYPE -> "image/png")
+
 Enumerator.fromFile("video.avi") &> ffmpeg &> ...
 }}}
  *
@@ -78,6 +82,9 @@ Enumerator.fromFile("video.avi") &> ffmpeg &> ...
  - '''WARN''' used for the process' stderr output.
  - '''TRACE''' used for low level informations (IO read/write).
  *
+ * @see [[http://github.com/gre/playCLI PlayCLI on Github]]
+ * @see [[http://github.com/gre/playCLI-examples PlayCLI-examples on Github]]
+
  * @version 0.1
  *
  * @define Enumerator [[http://www.playframework.org/documentation/api/2.1-RC1/scala/index.html#play.api.libs.iteratee.Enumerator Enumerator]]
