@@ -9,30 +9,82 @@ import concurrent.duration._
 import play.api.libs.iteratee._
 
 /**
- * CLI defines helpers to deal with UNIX command with Play Framework iteratees.
+ */
+
+/**
+ * CLI defines helpers to deal with UNIX command with [[http://playframework.org Play Framework]] iteratees.
  *
  * ==Overview==
  *
- * Depending on your needs, you can Enumerate / Pipe / Consume an UNIX command:
+ * Depending on your needs, you can '''Enumerate / Pipe / Consume''' an UNIX command:
  *
- * [[CLI.enumerate]] is a way to create a stream from a command which generates output 
- * (it creates an [[play.api.libs.iteratee.Enumerator]])
+ * [[CLI.enumerate]] is a way to create a stream from a command which '''generates output''' 
+ * (it creates an $Enumerator[Array[Byte]] )
  *
- * [[CLI.pipe]] is a way to pipe a command which consumes input and generates output 
- * (it creates an [[play.api.libs.iteratee.Enumeratee]])
+ * [[CLI.pipe]] is a way to pipe a command which '''consumes input and generates output''' 
+ * (it creates an $Enumeratee[Array[Byte],Array[Byte]])
  *
- * [[CLI.consume]] creates a process which consumes a stream - useful for side effect commands 
- * (it creates an [[play.api.libs.iteratee.Iteratee]])
+ * [[CLI.consume]] creates a process which '''consumes a stream''' - useful for side effect commands 
+ * (it creates an $Iteratee[Array[Byte],Int])
  *
- * ==Note==
+ * {{{
+import playcli._
+import scala.sys.process._
+
+// Some CLI use cases
+val tail = CLI.enumerate("tail -f /var/log/nginx/access.log")
+val grep = (word: String) => CLI.pipe(Seq("grep", word))
+val ffmpeg = CLI.pipe("ffmpeg -i pipe:0 ... pipe:1") // video processing
+val convert = CLI.pipe("convert - -colors 64 png:-") // color quantization
+
+// Some usage examples
+Ok.stream(tail).withHeaders(CONTENT_TYPE -> "text/plain") // Play framework
+val searchResult: Enumerator[String] = dictionaryEnumerator &> grep("able") &> aStringChunker
+Ok.stream(Enumerator.fromFile("image.jpg") &> convert).withHeaders(CONTENT_TYPE -> "image/png")
+Enumerator.fromFile("video.avi") &> ffmpeg &> ...
+}}}
  *
- * [[CLI.enumerate]] and [[CLI.pipe]] API are immutable, in other words, each result can be stored 
- * in a val and re-used multiple times. A new process is created for each re-use.
- * [[CLI.consume]] is mutable should not be used multiple times because it targets side effect command.
+ * ==Process==
  *
- * Every process' `stderr` is logged in the console with a "CLI" logger
+ * CLI uses [[http://www.scala-lang.org/api/current/index.html#scala.sys.process.package scala.sys.process]] 
+ * and create a Process instance for each UNIX command.
+ * 
+ * A CLI process is terminating when:
+   - The command has end.
+   - stdin and stdout is terminated.
+   - $Done is reached (for [[enumerate]] and [[pipe]]).
+   - $EOF is sent (for [[pipe]] and [[consume]]).
+ * 
+ * CLI still waits for the Process to terminate by asking the exit code (via `Process.exitCode()`).
+ * If the process is never ending during this phase, it will be killed when `terminateTimeout` is reached.
+ *
+ * PS: Thanks to implicits, you can simply give a [[String]] or a [[Seq]] to give the CLI.* functions a `ProcessBuilder`.
+ *
+ * ==Mutability==
+ *
+ * [[enumerate]] and [[pipe]] are '''immutable''', in other words, re-usable 
+ * (each result can be stored in a val and applied multiple times). 
+ * '''A new process is created for each re-use'''.
+ * 
+ * [[consume]] is '''mutable''', it should not be used multiple times: it targets side effect command.
+ *
+ * ==Logs==
+ *
+ * A "CLI" logger (logback) is used to log different informations in different log levels:
+ *
+ - '''ERROR''' would mean a CLI error (not used yet).
+ - '''INFO''' used for the process' stdout output of a [[CLI.consume]].
+ - '''DEBUG''' used for the process life cycle (process creation, process termination, exit code).
+ - '''WARN''' used for the process' stderr output.
+ - '''TRACE''' used for low level informations (IO read/write).
  *
  * @version 0.1
+ *
+ * @define Enumerator [[http://www.playframework.org/documentation/api/2.1-RC1/scala/index.html#play.api.libs.iteratee.Enumerator Enumerator]]
+ * @define Iteratee [[http://www.playframework.org/documentation/api/2.1-RC1/scala/index.html#play.api.libs.iteratee.Iteratee Iteratee]]
+ * @define Enumeratee [[http://www.playframework.org/documentation/api/2.1-RC1/scala/index.html#play.api.libs.iteratee.Enumeratee Enumeratee]]
+ * @define Done [[http://www.playframework.org/documentation/api/2.1-RC1/scala/index.html#play.api.libs.iteratee.Done$ Done]]
+ * @define EOF [[http://www.playframework.org/documentation/api/2.1-RC1/scala/index.html#play.api.libs.iteratee.Input$$EOF$ EOF]]
  */
 object CLI {
 
