@@ -9,8 +9,22 @@ object BuildSettings {
     version := buildVersion,
     scalaVersion := "2.10.0",
     crossScalaVersions := Seq("2.10.0"),
-    crossVersion := CrossVersion.binary,
+    crossVersion := CrossVersion.binary
+  ) ++ Publish.settings
+}
 
+object Publish {
+  object TargetRepository {
+    def sonatype: Project.Initialize[Option[sbt.Resolver]] = version { (version: String) =>
+      val nexus = "https://oss.sonatype.org/"
+      if (version.trim.endsWith("SNAPSHOT"))
+        Some("snapshots" at nexus + "content/repositories/snapshots")
+      else
+        Some("releases"  at nexus + "service/local/staging/deploy/maven2")
+    }
+  }
+  lazy val settings = Seq(
+    publishTo <<= TargetRepository.sonatype,
     publishMavenStyle := true,
     publishArtifact in Test := false,
     pomIncludeRepository := { _ => false },
@@ -28,7 +42,7 @@ object BuildSettings {
           <url>http://greweb.fr/</url>
         </developer>
       </developers>)
-  )
+    )
 }
 
 object CLIBuild extends Build {
@@ -45,10 +59,10 @@ object CLIBuild extends Build {
         "Typesafe repository releases" at "http://repo.typesafe.com/typesafe/releases/"
       ),
       libraryDependencies ++= Seq(
+        "play" %% "play-iteratees" % "2.1-RC2",
+        "com.typesafe" % "config" % "1.0.0",
         "ch.qos.logback" % "logback-core" % logbackVer,
         "ch.qos.logback" % "logback-classic" % logbackVer,
-        "com.typesafe" % "config" % "1.0.0",
-        "play" %% "play-iteratees" % "2.1-RC2",
         "org.specs2" %% "specs2" % "1.12.3" % "test"
       )
     )
