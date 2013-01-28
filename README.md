@@ -37,7 +37,11 @@ val logs = CLI.enumerate(Seq("tail", "-f", myFilePath))
 // A consume example
 val events : Enumerator[String] = …
 events &> 
-  Enumerator.map((events+"\n").map(_.toByte).toArray) |>>> 
+  Enumerator.map(e => (e+"\n").map(_.toByte).toArray) |>>> 
   CLI.consume("externalLoggerCmd")
 
+// 
+
 ```
+
+[… continue to the scala API](http://greweb.fr/playcli/api/#playcli.CLI$)
