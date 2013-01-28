@@ -114,10 +114,10 @@ object CLI {
    CLI.enumerate("find .")
    * }}}
    */
-  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024*8, terminateTimeout: Long = defaultTerminateTimeout): Enumerator[Array[Byte]] =
+  def enumerate (command: ProcessBuilder, chunkSize: Int = 1024*8, terminateTimeout: Long = defaultTerminateTimeout)
+    (implicit ec: ExecutionContext = internal.defaultExecutionContext): Enumerator[Array[Byte]] =
     new Enumerator[Array[Byte]] {
       def apply[A](consumer: Iteratee[Array[Byte], A]) = {
-        import internal.defaultExecutionContext
         val (process, stdin, stdout, stderr) = runProcess(command) 
         logger.debug("enumerate "+command)
         stderr.map(logStream(_)(logger.warn))
@@ -157,10 +157,10 @@ object CLI {
      oggStream &> CLI.pipe("sox -t ogg - -t ogg - echo 0.5 0.7 60 1")
    * }}}
    */
-  def pipe (command: ProcessBuilder, chunkSize: Int = 1024*8, terminateTimeout: Long = defaultTerminateTimeout): Enumeratee[Array[Byte], Array[Byte]] =
+  def pipe (command: ProcessBuilder, chunkSize: Int = 1024*8, terminateTimeout: Long = defaultTerminateTimeout)
+    (implicit ec: ExecutionContext = internal.defaultExecutionContext): Enumeratee[Array[Byte], Array[Byte]] =
     new Enumeratee[Array[Byte], Array[Byte]] { 
       def applyOn[A](consumer: Iteratee[Array[Byte], A]) = {
-        import internal.defaultExecutionContext
         val (process, stdin, stdout, stderr) = runProcess(command)
         logger.debug("pipe "+command)
 
@@ -272,9 +272,9 @@ object CLI {
      enumerator |>>> CLI.consume("aSideEffectCommand")
    * }}}
    */
-  def consume (command: ProcessBuilder, terminateTimeout: Long = defaultTerminateTimeout): Iteratee[Array[Byte], Int] =
+  def consume (command: ProcessBuilder, terminateTimeout: Long = defaultTerminateTimeout)
+    (implicit ec: ExecutionContext = internal.defaultExecutionContext): Iteratee[Array[Byte], Int] =
     Iteratee.flatten[Array[Byte], Int] {
-      import internal.defaultExecutionContext
       val (process, stdin, stdout, stderr) = runProcess(command)
       logger.debug("consume "+command)
 
