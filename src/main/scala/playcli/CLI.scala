@@ -53,7 +53,7 @@ Enumerator.fromFile("video.avi") &> ffmpeg &> ...
  * CLI uses [[http://www.scala-lang.org/api/current/index.html#scala.sys.process.package scala.sys.process]] 
  * and create a Process instance for each UNIX command.
  * 
- * A CLI process is terminating when:
+ * A CLI process terminates when:
    - The command has end.
    - stdin and stdout is terminated.
    - $Done is reached (for [[enumerate]] and [[pipe]]).
@@ -74,13 +74,13 @@ Enumerator.fromFile("video.avi") &> ffmpeg &> ...
  *
  * ==Logs==
  *
- * A "CLI" logger (logback) is used to log different informations in different log levels:
+ * A "CLI" logger (logback) is used to log different information in different log levels:
  *
  - '''ERROR''' would mean a CLI error (not used yet).
  - '''INFO''' used for the process' stdout output of a [[CLI.consume]].
  - '''DEBUG''' used for the process life cycle (process creation, process termination, exit code).
  - '''WARN''' used for the process' stderr output.
- - '''TRACE''' used for low level informations (IO read/write).
+ - '''TRACE''' used for low level information (IO read/write).
  *
  * @see [[http://github.com/gre/playCLI PlayCLI on Github]]
  * @see [[http://github.com/gre/playCLI-examples PlayCLI-examples on Github]]
