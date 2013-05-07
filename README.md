@@ -3,8 +3,8 @@ Play CLI
 
 Play CLI defines helpers to deal with UNIX command with Play Framework iteratees.
 
-* [Checkout the presentation slides](http://greweb.fr/playcli).
-* [Checkout the scala API](http://greweb.fr/playcli/api).
+* [Checkout the presentation slides](http://gre.github.io/playcli-examples).
+* [Checkout the scala API](http://gre.github.io/playcli-examples/api).
 * [Checkout Play CLI Examples application](http://github.com/gre/playCLI-examples).
 
 Getting Started
@@ -44,4 +44,4 @@ events &>
 
 ```
 
-[… continue to the scala API](http://greweb.fr/playcli/api/#playcli.CLI$)
+[… continue to the scala API](http://gre.github.io/playcli-examples/api/#playcli.CLI$)
