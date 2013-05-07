@@ -29,7 +29,7 @@ object Publish {
     publishArtifact in Test := false,
     pomIncludeRepository := { _ => false },
     licenses := Seq("Apache 2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
-    homepage := Some(url("http://gre.github.io/playcli-examples")),
+    homepage := Some(url("http://gre.github.io/playCLI-examples")),
     pomExtra := (
       <scm>
         <url>git://github.com/gre/playCLI.git</url>
