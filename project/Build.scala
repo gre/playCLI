@@ -2,7 +2,7 @@ import sbt._
 import Keys._
 
 object BuildSettings {
-  val buildVersion = "0.1"
+  val buildVersion = "0.11"
 
   val buildSettings = Defaults.defaultSettings ++ Seq(
     organization := "fr.greweb",
@@ -59,7 +59,7 @@ object CLIBuild extends Build {
         "Typesafe repository releases" at "http://repo.typesafe.com/typesafe/releases/"
       ),
       libraryDependencies ++= Seq(
-        "play" %% "play-iteratees" % "2.1-RC2",
+        "com.typesafe.play" %% "play-iteratees" % "2.2.0",
         "com.typesafe" % "config" % "1.0.0",
         "ch.qos.logback" % "logback-core" % logbackVer,
         "ch.qos.logback" % "logback-classic" % logbackVer,
