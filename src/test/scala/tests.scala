@@ -4,8 +4,9 @@ import playcli.CLI
 import sys.process.Process
 import play.api.libs.iteratee._
 import org.specs2.mutable._
+import java.util.concurrent.Executors
 import concurrent.ExecutionContext
-import ExecutionContext.Implicits.global
+// import ExecutionContext.Implicits.global
 import concurrent.{Promise, Future, Await}
 import concurrent.duration.Duration
 import collection.immutable.StringOps
@@ -14,6 +15,9 @@ import java.io.File
 
 
 object Utils {
+
+  implicit val context = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(64)).prepare()
+
   val maxDuration = Duration("9 second")
 
   val stringToBytes = (str: StringOps) => str.map(_.toByte).toArray
@@ -38,7 +42,6 @@ object Resources {
   val bigItemsBytes = bytesJoin(bigItems)
   val bigEnum = Enumerator.apply(bigItems : _*)
 }
-
 
 class CLIenumerate extends Specification {
   import Utils._

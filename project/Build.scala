@@ -9,7 +9,9 @@ object BuildSettings {
     version := buildVersion,
     scalaVersion := "2.10.0",
     crossScalaVersions := Seq("2.10.0"),
-    crossVersion := CrossVersion.binary
+    crossVersion := CrossVersion.binary,
+    parallelExecution in Test := false,
+    testOptions in Test += Tests.Argument("sequential")
   ) ++ Publish.settings
 }
 
