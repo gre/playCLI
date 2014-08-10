@@ -2,7 +2,7 @@ import sbt._
 import Keys._
 
 object BuildSettings {
-  val buildVersion = "0.11"
+  val buildVersion = "0.12"
 
   val buildSettings = Defaults.defaultSettings ++ Seq(
     organization := "fr.greweb",

@@ -13,7 +13,7 @@ Getting Started
 Add this SBT dependency:
 
 ```scala
-"fr.greweb" %% "playcli" % "0.1"
+"fr.greweb" %% "playcli" % "0.12"
 ```
 *Play CLI depends only on play-iteratee.*
 
