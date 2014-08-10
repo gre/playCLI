@@ -7,12 +7,9 @@ object BuildSettings {
   val buildSettings = Defaults.defaultSettings ++ Seq(
     organization := "fr.greweb",
     version := buildVersion,
-    scalaVersion := "2.10.0",
-    crossScalaVersions := Seq("2.10.0"),
-    crossVersion := CrossVersion.binary,
+    scalaVersion := "2.11.0",
     parallelExecution in Test := false,
-    testOptions in Test += Tests.Argument("sequential")
-  ) ++ Publish.settings
+    testOptions in Test += Tests.Argument("sequential")) ++ Publish.settings
 }
 
 object Publish {
@@ -22,7 +19,7 @@ object Publish {
       if (version.trim.endsWith("SNAPSHOT"))
         Some("snapshots" at nexus + "content/repositories/snapshots")
       else
-        Some("releases"  at nexus + "service/local/staging/deploy/maven2")
+        Some("releases" at nexus + "service/local/staging/deploy/maven2")
     }
   }
   lazy val settings = Seq(
@@ -43,8 +40,7 @@ object Publish {
           <name>Gaëtan Renaudeau</name>
           <url>http://greweb.fr/</url>
         </developer>
-      </developers>)
-    )
+      </developers>))
 }
 
 object CLIBuild extends Build {
@@ -58,15 +54,11 @@ object CLIBuild extends Build {
     settings = buildSettings ++ Seq(
       resolvers := Seq(
         "Typesafe repository snapshots" at "http://repo.typesafe.com/typesafe/snapshots/",
-        "Typesafe repository releases" at "http://repo.typesafe.com/typesafe/releases/"
-      ),
+        "Typesafe repository releases" at "http://repo.typesafe.com/typesafe/releases/"),
       libraryDependencies ++= Seq(
-        "com.typesafe.play" %% "play-iteratees" % "2.2.0",
+        "com.typesafe.play" %% "play-iteratees" % "2.3.0",
         "com.typesafe" % "config" % "1.0.0",
         "ch.qos.logback" % "logback-core" % logbackVer,
         "ch.qos.logback" % "logback-classic" % logbackVer,
-        "org.specs2" %% "specs2" % "1.12.3" % "test"
-      )
-    )
-  )
+        "org.specs2" %% "specs2" % "2.4" % "test")))
 }
