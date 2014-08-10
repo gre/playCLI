@@ -54,10 +54,10 @@ import play.api.libs.iteratee._
  * and create a Process instance for each UNIX command.
  *
  * A CLI process terminates when:
- * - The command has end.
- * - stdin and stdout is terminated.
- * - $Done is reached (for [[enumerate]] and [[pipe]]).
- * - $EOF is sent (for [[pipe]] and [[consume]]).
+ - The command has end.
+ - stdin and stdout is terminated.
+ - $Done is reached (for [[enumerate]] and [[pipe]]).
+ - $EOF is sent (for [[pipe]] and [[consume]]).
  *
  * CLI still waits for the Process to terminate by asking the exit code (via `Process.exitCode()`).
  * If the process is never ending during this phase, it will be killed when `terminateTimeout` is reached.
@@ -76,11 +76,11 @@ import play.api.libs.iteratee._
  *
  * A "CLI" logger (logback) is used to log different information in different log levels:
  *
- * - '''ERROR''' would mean a CLI error (not used yet).
- * - '''INFO''' used for the process' stdout output of a [[CLI.consume]].
- * - '''DEBUG''' used for the process life cycle (process creation, process termination, exit code).
- * - '''WARN''' used for the process' stderr output.
- * - '''TRACE''' used for low level information (IO read/write).
+ - '''ERROR''' would mean a CLI error (not used yet).
+ - '''INFO''' used for the process' stdout output of a [[CLI.consume]].
+ - '''DEBUG''' used for the process life cycle (process creation, process termination, exit code).
+ - '''WARN''' used for the process' stderr output.
+ - '''TRACE''' used for low level information (IO read/write).
  *
  * @see [[http://github.com/gre/playCLI PlayCLI on Github]]
  * @see [[http://github.com/gre/playCLI-examples PlayCLI-examples on Github]]
