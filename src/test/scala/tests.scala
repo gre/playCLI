@@ -5,7 +5,7 @@ import sys.process.Process
 import play.api.libs.iteratee._
 import org.specs2.mutable._
 import java.util.concurrent.Executors
-import concurrent.ExecutionContext
+
 // import ExecutionContext.Implicits.global
 import concurrent.{ Promise, Future, Await }
 import concurrent.duration.Duration
@@ -14,6 +14,7 @@ import java.util.concurrent.{ TimeUnit }
 import java.io.File
 
 object Utils {
+  import concurrent.ExecutionContext
 
   implicit val context = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(64)).prepare()
 
@@ -45,6 +46,8 @@ object Resources {
 class CLIenumerate extends Specification {
   import Utils._
   import Resources._
+
+  override val concurrentExecutionContext = context
 
   "CLI.enumerate" should {
 
@@ -92,6 +95,7 @@ class CLIenumerate extends Specification {
       }
       for (r <- results)
         Await.result(r, maxDuration)
+      0 must equalTo(0)
     }
   }
 }
@@ -99,6 +103,8 @@ class CLIenumerate extends Specification {
 class CLIpipe extends Specification {
   import Utils._
   import Resources._
+
+  override val concurrentExecutionContext = context
 
   "CLI.pipe" should {
 
@@ -165,6 +171,8 @@ supermannish
 class CLIconsume extends Specification {
   import Utils._
   import Resources._
+
+  override val concurrentExecutionContext = context
 
   "CLI.consume" should {
 
